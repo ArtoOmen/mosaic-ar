@@ -122,11 +122,11 @@ function buildWorld(parent, target, { count }) {
     onEvent(type, b) {
       const pan = Math.max(-1, Math.min(1, b.pos.x * 1.8));
       if (type === 'emerge') {
-        song.play('flutter', pan, 0.12);
-        song.play(b.scheme === 3 ? 'whistle' : Math.random() < 0.5 ? 'tweet' : 'trill', pan, 0.17);
+        song.play('flutter', pan, 0.06);
+        song.play(b.scheme === 3 ? 'whistle' : Math.random() < 0.6 ? 'tweet' : 'warble', pan, 0.09, 0.15);
         mural.pulse(b.homePx[0], b.homePx[1], 85);
       } else if (type === 'merge') {
-        song.play('flutter', pan, 0.1);
+        song.play('flutter', pan, 0.05);
         mural.pulse(b.homePx[0], b.homePx[1], 65);
       }
     },
@@ -150,7 +150,8 @@ function disposeWorld(world) {
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 function tapWorld(ev, camera, world, t) {
-  ndc.set((ev.clientX / innerWidth) * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
+  const r = $('#stage').getBoundingClientRect();
+  ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ndc, camera);
   const hit = ray.intersectObject(world.mural.mesh, false)[0];
   if (!hit || !hit.uv) return;
@@ -158,7 +159,7 @@ function tapWorld(ev, camera, world, t) {
   const px = hit.uv.x * rig.w, py = (1 - hit.uv.y) * rig.h;
   world.mural.pulse(px, py, 55);
   song.unlock();
-  if (!world.flock.launchFrom(t, px, py)) song.play('tweet', ndc.x * 0.8, 0.15);
+  if (!world.flock.launchFrom(t, px, py)) song.play('tweet', ndc.x * 0.8, 0.08);
   if (navigator.vibrate) navigator.vibrate(12);
 }
 
@@ -194,6 +195,23 @@ async function openCamera() {
   throw new CameraError('generic', last);
 }
 
+// iOS can report the camera size before the first frame and then flip it; wait for
+// a frame and for the size to settle (at most ~1 s) before MindAR reads it
+async function stableVideoSize(v) {
+  await new Promise((res) => {
+    if (v.readyState >= 2) return res();
+    v.addEventListener('loadeddata', res, { once: true });
+    setTimeout(res, 1500);
+  });
+  let last = `${v.videoWidth}x${v.videoHeight}`;
+  for (let i = 0; i < 8; i++) {
+    await new Promise((res) => setTimeout(res, 120));
+    const now = `${v.videoWidth}x${v.videoHeight}`;
+    if (now === last && i >= 1) break;
+    last = now;
+  }
+}
+
 class ARSession {
   async start() {
     setLoading(T.loadingCam);
@@ -221,7 +239,8 @@ class ARSession {
         v.muted = true; v.playsInline = true;
         Object.assign(v.style, { position: 'absolute', top: '0px', left: '0px', zIndex: '-2' });
         this.container.appendChild(v);
-        v.addEventListener('loadedmetadata', () => {
+        v.addEventListener('loadedmetadata', async () => {
+          await stableVideoSize(v);
           v.setAttribute('width', v.videoWidth); v.setAttribute('height', v.videoHeight);
           resolve();
         }, { once: true });
@@ -252,6 +271,19 @@ class ARSession {
       new Promise((_, reject) => setTimeout(() => reject(new Error('AR start timeout')), 60000)),
     ]);
     mindar.resize();
+    // keep the camera image and the 3D view in step when iOS changes the viewport (toolbars,
+    // rotation) or the camera changes its frame size
+    this.refit = () => { if (this.mindar) this.mindar.resize(); };
+    this.ro = new ResizeObserver(this.refit);
+    this.ro.observe(container);
+    if (window.visualViewport) visualViewport.addEventListener('resize', this.refit);
+    this.onVideoResize = () => {
+      const v = mindar.video, c = mindar.controller;
+      if (!v || !c) return;
+      if ((v.videoWidth > v.videoHeight) !== (c.inputWidth > c.inputHeight)) run(ARSession);   // orientation flipped: restart
+      else this.refit();
+    };
+    mindar.video.addEventListener('resize', this.onVideoResize);
 
     hideScreens();
     $('#hud').classList.remove('hidden');
@@ -284,8 +316,8 @@ class ARSession {
       mural.awaken(t);
       flock.start(t);
       e.awake = true;
-      song.play('magic', 0, 0.2);
-      this.nextChirp = t + 1.2;
+      song.play('magic', 0, 0.14);
+      this.nextChirp = t + 2.5;
       toast(T.awake);
       if (navigator.vibrate) navigator.vibrate([18, 40, 18]);
     }
@@ -313,7 +345,7 @@ class ARSession {
       e.world.mural.update(t, dt, this.cam);
       e.world.flock.update(t, dt, this.cam);
     }
-    if (this.tracking && t > this.nextChirp) { song.ambient(true); this.nextChirp = t + rand(1.4, 4.2); }
+    if (this.tracking && t > this.nextChirp) { song.ambient(true); this.nextChirp = t + rand(2.8, 6.5); }
     this.mindar.renderer.render(this.mindar.scene, this.mindar.camera);
   }
 
@@ -325,6 +357,9 @@ class ARSession {
     m.renderer.setAnimationLoop(null);
     try { m.stop(); } catch (e) { /* video may not have started */ }
     $('#stage').removeEventListener('pointerdown', this.onTap);
+    if (this.ro) this.ro.disconnect();
+    if (window.visualViewport && this.refit) visualViewport.removeEventListener('resize', this.refit);
+    if (m.video && this.onVideoResize) m.video.removeEventListener('resize', this.onVideoResize);
     m.renderer.dispose();
     m.renderer.domElement.remove();
     m.cssRenderer.domElement.remove();
@@ -374,14 +409,16 @@ class DemoSession {
     this.lookT = new THREE.Vector2();
     this.nextChirp = 1.5;
 
+    const stage = $('#stage');
     this.onResize = () => {
-      camera.aspect = innerWidth / innerHeight;
+      const w = stage.clientWidth || innerWidth, h = stage.clientHeight || innerHeight;
+      camera.aspect = w / h;
       const f = 2 * Math.tan((camera.fov * Math.PI) / 360);
       const pad = 1.14;
       const rig = this.world ? this.world.target.rig : this.targets[this.index].rig;
       this.dist = Math.max((rig.h / rig.w) * pad / f, pad / (f * camera.aspect));
       camera.updateProjectionMatrix();
-      renderer.setSize(innerWidth, innerHeight);
+      renderer.setSize(w, h);
     };
     this.onMove = (e) => { if (e.pointerType === 'mouse') this.lookT.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1); };
     this.onOrient = (e) => {
@@ -392,6 +429,8 @@ class DemoSession {
     };
     this.onTap = (ev) => tapWorld(ev, camera, this.world, this.clock.elapsedTime);
     window.addEventListener('resize', this.onResize);
+    this.ro = new ResizeObserver(() => this.onResize());
+    this.ro.observe(stage);
     window.addEventListener('pointermove', this.onMove);
     window.addEventListener('deviceorientation', this.onOrient);
     $('#stage').addEventListener('pointerdown', this.onTap);
@@ -416,7 +455,7 @@ class DemoSession {
     this.onResize();
     this.world.mural.awaken(t + 0.35);
     this.world.flock.start(t + 0.4);
-    song.play('magic', 0, 0.2);
+    song.play('magic', 0, 0.14);
   }
 
   next() { this.show(this.index + 1); }
@@ -433,7 +472,7 @@ class DemoSession {
     this.camera.lookAt(0, 0, 0);
     this.world.mural.update(t, dt, this.camera.position);
     this.world.flock.update(t, dt, this.camera.position);
-    if (t > this.nextChirp) { song.ambient(true); this.nextChirp = t + rand(1.6, 4.5); }
+    if (t > this.nextChirp) { song.ambient(true); this.nextChirp = t + rand(3, 7); }
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -441,6 +480,7 @@ class DemoSession {
     if (!this.renderer) return;
     this.renderer.setAnimationLoop(null);
     window.removeEventListener('resize', this.onResize);
+    if (this.ro) this.ro.disconnect();
     window.removeEventListener('pointermove', this.onMove);
     window.removeEventListener('deviceorientation', this.onOrient);
     $('#stage').removeEventListener('pointerdown', this.onTap);

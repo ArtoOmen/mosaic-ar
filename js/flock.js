@@ -4,7 +4,6 @@ import { PAL, px2local } from './rig.js';
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
 const easeOut = (x) => 1 - Math.pow(1 - x, 3);
-const easeOutBack = (x) => { const c = 1.7; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
 const hexRGB = (h) => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
 
 // Colour schemes echo the painted birds
@@ -141,7 +140,7 @@ function buildBirdGeometries(s) {
     inner.push([a, b, c, s.wingIn[k]], [a, c, d, s.wingIn[k]]);
   }
   // outer wing: a striped feather fan from the elbow
-  const O = [0, 0, -0.03], lens = [0.3, 0.36, 0.38, 0.36, 0.31, 0.24];
+  const O = [0, 0, -0.03], lens = [0.27, 0.32, 0.34, 0.32, 0.28, 0.22];
   const arc = lens.map((l, k) => { const th = (160 + k * 16) * Math.PI / 180; return [O[0] + Math.cos(th) * l, 0, O[2] + Math.sin(th) * l]; });
   const outer = [[[0, 0, 0.07], arc[0], O, s.wingOut[0]]];
   for (let k = 0; k < 5; k++) outer.push([O, arc[k], arc[k + 1], s.wingOut[k]]);
@@ -206,6 +205,8 @@ class Bird {
     this.phase = rand(0, 6.28);
     this.flap = 1;
     this.bank = 0;
+    this.unfold = 1;      // 0..1 how far the wings are open
+    this.side = 1;        // which way the bird leaves the wall
     this.size = rand(0.12, 0.15);
     this.nextTarget = 0;
     this.nextTrail = 0;
@@ -359,11 +360,16 @@ export class Flock {
     const [x, y] = px2local(this.rig, nest.c[0], nest.c[1]);
     b.home.set(x, y, 0);
     b.homePx = nest.c;
+    // Leave the wall sideways, so the bird is seen in profile. Flying straight at the
+    // camera it would be a flat bar of spread wings (looked like a stretched glitch).
+    b.side = (x < 0 ? -1 : 1) * (Math.random() < 0.8 ? 1 : -1);
     b.pos.set(x, y, -0.03);
-    b.vel.set(rand(-0.1, 0.1), 0.18, 0.35);
+    b.vel.set(b.side * 0.3, 0.14, 0.1);
+    b.bank = 0;
+    b.unfold = 0.25;
     b.state = 'emerge';
     b.stateT = t;
-    b.until = t + 0.8;
+    b.until = t + 0.9;
     b.obj.visible = true;
     this.bits.emit(this._t.set(x, y, 0.01), 26, this._colors(b), 0.4, this._r.set(0, 0, 0.5));
     this.onEvent('emerge', b);
@@ -379,21 +385,28 @@ export class Flock {
       }
       let scale = 1;
       if (b.state === 'emerge') {
-        const u = clamp01((t - b.stateT) / 0.8);
-        b.pos.set(b.home.x, b.home.y + 0.04 * easeOut(u), -0.03 + 0.19 * easeOut(u));
-        scale = 0.25 + 0.75 * easeOutBack(u);
-        b.flap = 1.4;
+        const u = clamp01((t - b.stateT) / 0.9);
+        const e = easeOut(u);
+        b.pos.set(b.home.x + b.side * 0.08 * e, b.home.y + 0.05 * e, -0.03 + 0.16 * e);
+        scale = 0.45 + 0.55 * e;
+        b.unfold = 0.25 + 0.75 * easeOut(clamp01(u * 1.5));   // wings open while it leaves the wall
+        b.flap = 0.9;
         if (u >= 1) {
           b.state = 'fly'; b.stateT = t; b.until = t + rand(9, 16);
-          b.vel.set(rand(-0.2, 0.2), 0.12, 0.22);
+          b.vel.set(b.side * 0.26, 0.1, 0.06);
           b.nextTarget = 0;
         }
       } else if (b.state === 'fly' || b.state === 'return') {
         const acc = b.acc.set(0, 0, 0);
         if (b.state === 'fly') {
           if (t > b.nextTarget) {
-            b.target.set(rand(-box.x, box.x) * 0.9, rand(box.yMin, box.yMax) * 0.9, rand(box.zMin + 0.03, box.zMax));
-            if (camLocal && Math.random() < 0.18) b.target.copy(camLocal).multiplyScalar(0.55).setZ(Math.min(camLocal.z * 0.55, 0.7));
+            b.target.set(rand(-box.x, box.x) * 0.9, rand(box.yMin, box.yMax) * 0.9, rand(box.zMin + 0.03, box.zMax * 0.8));
+            if (camLocal && Math.random() < 0.15) {
+              // swoop past the viewer, not into the lens
+              b.target.copy(camLocal).multiplyScalar(0.5);
+              b.target.x += (Math.random() < 0.5 ? -1 : 1) * 0.28;
+              b.target.z = Math.min(camLocal.z * 0.5, 0.6);
+            }
             b.nextTarget = t + rand(1.6, 3.4);
           }
           if (t > b.until || !this.active) { b.state = 'return'; b.target.set(b.home.x, b.home.y, 0.12); }
@@ -421,7 +434,11 @@ export class Flock {
         const sp = b.vel.length();
         const lo = b.state === 'return' ? 0.05 : 0.16;
         if (sp > 0.46) b.vel.multiplyScalar(0.46 / sp); else if (sp < lo) b.vel.multiplyScalar(lo / Math.max(sp, 1e-4));
+        // mostly fly across the wall: a bird heading at the camera shows only its spread wings
+        const maxZ = 0.6 * b.vel.length();
+        if (Math.abs(b.vel.z) > maxZ) b.vel.z = Math.sign(b.vel.z) * maxZ;
         b.pos.addScaledVector(b.vel, dt);
+        b.unfold += (1 - b.unfold) * (1 - Math.exp(-dt * 6));
         const right = this._r.crossVectors(this._fw.copy(b.vel).normalize(), this._up).normalize();
         const bankT = Math.max(-0.9, Math.min(0.9, -acc.dot(right) * 0.9));
         b.bank += (bankT - b.bank) * (1 - Math.exp(-dt * 5));
@@ -439,8 +456,9 @@ export class Flock {
       } else if (b.state === 'merge') {
         const u = clamp01((t - b.stateT) / 0.55);
         b.pos.lerp(this._t.set(b.home.x, b.home.y, -0.03), 1 - Math.exp(-dt * 9));
-        scale = 1 - 0.8 * easeOut(u);
-        b.flap = 1.2;
+        scale = 1 - 0.6 * easeOut(u);
+        b.unfold = 1 - 0.75 * easeOut(u);                         // fold the wings back into the wall
+        b.flap = 0.9;
         if (u >= 1) {
           b.state = 'rest'; b.stateT = t; b.until = rand(1.5, 5); b.obj.visible = false;
           this.used.delete(b.nest);
@@ -455,11 +473,12 @@ export class Flock {
       this._m.lookAt(this._t.addVectors(b.pos, fw), b.pos, this._up);
       b.obj.quaternion.setFromRotationMatrix(this._m);
       b.obj.quaternion.multiply(this._q.setFromAxisAngle(this._fw.set(0, 0, 1), b.bank));
-      b.phase += dt * 6.2832 * (b.state === 'emerge' || b.state === 'merge' ? 10 : 7.5);
+      b.phase += dt * 6.2832 * (b.state === 'emerge' || b.state === 'merge' ? 6.5 : 7.5);
       const wing = (0.2 + 0.75 * Math.sin(b.phase)) * b.flap + 0.3 * (1 - Math.min(1, b.flap));
       const tip = 0.5 * Math.sin(b.phase - 0.7) * b.flap;
       b.wl.sh.rotation.z = -wing; b.wl.el.rotation.z = -tip;
       b.wr.sh.rotation.z = wing; b.wr.el.rotation.z = tip;
+      b.wl.sh.scale.x = b.wr.sh.scale.x = b.unfold;
       b.tail.scale.x = 0.9 + 0.2 * Math.sin(b.phase * 0.25);
       b.obj.position.copy(b.pos);
       b.obj.position.y += 0.004 * Math.sin(b.phase + Math.PI) * b.flap;
