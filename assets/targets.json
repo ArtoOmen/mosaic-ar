@@ -1,0 +1,6 @@
+{
+ "targets": [
+  { "id": "birds-a", "title": "Мозаика 1" },
+  { "id": "birds-b", "title": "Мозаика 2" }
+ ]
+}

@@ -40,7 +40,7 @@
 
   /* ---------- intro ---------- */
   #intro { background: var(--bg); overflow-y: auto; justify-content: flex-start; }
-  #intro::before { content: ''; position: fixed; inset: -60px; z-index: -2; background: url(assets/mural.jpg) center / cover;
+  #intro::before { content: ''; position: fixed; inset: -60px; z-index: -2; background: url(assets/t/birds-a/mural.jpg) center / cover;
     filter: blur(30px) saturate(1.25); opacity: .38; transform: scale(1.1); }
   #intro::after { content: ''; position: fixed; inset: 0; z-index: -1;
     background: linear-gradient(180deg, rgba(18, 16, 14, .15) 0%, rgba(18, 16, 14, .8) 55%, #12100e 100%); }
@@ -71,6 +71,11 @@
   .stand { display: none; margin: 0; }
   .stand img { display: block; margin: 0 auto; width: auto; height: auto; max-width: 100%; max-height: calc(100vh - 100px); border-radius: 8px;
     box-shadow: 0 30px 70px rgba(0, 0, 0, .6); }
+  .stand-tabs { display: flex; gap: 8px; justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+  .stand-tabs:empty { display: none; }
+  .stand-tabs button { appearance: none; border: 1px solid var(--line); background: rgba(246, 240, 228, .06); color: var(--muted); border-radius: 999px;
+    padding: 8px 14px; font-weight: 700; font-size: 14px; cursor: pointer; }
+  .stand-tabs button.on { background: var(--ochre); color: #1d160c; border-color: transparent; }
   .stand figcaption { margin-top: 12px; text-align: center; font-size: 14px; font-weight: 600; color: var(--muted); }
   .phone-card { display: none; }
   .qr { background: #fff; border-radius: 14px; padding: 10px; width: 150px; aspect-ratio: 1; }
@@ -136,6 +141,7 @@
   .round svg { width: 22px; height: 22px; }
   #btnClose { left: 14px; }
   #btnSound { right: 14px; }
+  #btnSwitch { right: 70px; }
   #btnSound .off { display: none; }
   #btnSound.muted .on { display: none; }
   #btnSound.muted .off { display: block; }
@@ -164,12 +170,13 @@
 <section id="intro" class="screen">
   <div class="intro-grid">
     <figure class="stand">
-      <img src="assets/mural-photo.jpg" alt="" width="1280" height="1169">
+      <img src="assets/t/birds-a/photo.jpg" alt="" id="standImg">
+      <div class="stand-tabs" id="standTabs"></div>
       <figcaption data-i18n="standCaption">Наведите телефон на эту картинку — птицы оживут</figcaption>
     </figure>
     <div class="intro-main">
       <span class="chip"><b></b><span data-i18n="chip">Дополненная реальность · без приложения</span></span>
-      <div class="art"><img src="assets/mural.jpg" alt="" width="930" height="1001"></div>
+      <div class="art"><img src="assets/t/birds-a/mural.jpg" alt="" width="930" height="1001"></div>
       <h1 data-i18n-html="title">Живая <em>мозаика</em></h1>
       <p class="lead" data-i18n="lead">Наведите камеру на мозаику — птицы проснутся, начнут крутить головами, моргать и вылетать прямо из стены.</p>
       <aside class="phone-card" id="phoneCard">
@@ -204,7 +211,7 @@
 
 <div id="scan" class="hidden">
   <div class="frame">
-    <img src="assets/mural.jpg" alt="">
+    <img src="assets/t/birds-a/mural.jpg" alt="">
     <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
     <span class="beam"></span>
   </div>
@@ -217,6 +224,9 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
   </button>
   <div id="badge" class="hidden" data-i18n="demoBadge">Демо без камеры</div>
+  <button class="round hidden" id="btnSwitch" aria-label="Другая мозаика">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg>
+  </button>
   <button class="round" id="btnSound" aria-label="Звук">
     <svg class="on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
     <svg class="off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M22 9l-6 6M16 9l6 6"/></svg>

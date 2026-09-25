@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PAL, NESTS, px2local } from './rig.js';
+import { PAL, px2local } from './rig.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
@@ -267,9 +267,11 @@ class TileBits {
 }
 
 export class Flock {
-  constructor({ count = 5, onEvent = () => {} } = {}) {
+  constructor({ count = 5, rig, onEvent = () => {} }) {
     this.group = new THREE.Group();
     this.onEvent = onEvent;
+    this.rig = rig;
+    this.nests = rig.nests.length ? rig.nests : [{ c: [rig.w / 2, rig.h / 2], scheme: 0 }];
     const tiles = makeTileTexture();
     const mat = makeBirdMaterial(tiles);
     const eyeMats = {
@@ -315,10 +317,11 @@ export class Flock {
 
   pickNest(near) {
     let best = null, bestD = Infinity;
-    const free = NESTS.map((n, i) => i).filter((i) => !this.used.has(i));
-    const pool = free.length ? free : NESTS.map((n, i) => i);
+    const all = this.nests.map((n, i) => i);
+    const free = all.filter((i) => !this.used.has(i));
+    const pool = free.length ? free : all;
     if (near) {
-      for (const i of pool) { const d = Math.hypot(NESTS[i].c[0] - near[0], NESTS[i].c[1] - near[1]); if (d < bestD) { bestD = d; best = i; } }
+      for (const i of pool) { const d = Math.hypot(this.nests[i].c[0] - near[0], this.nests[i].c[1] - near[1]); if (d < bestD) { bestD = d; best = i; } }
       return best;
     }
     return pool[(Math.random() * pool.length) | 0];
@@ -349,11 +352,11 @@ export class Flock {
   }
 
   _emerge(b, t, nestIndex) {
-    const nest = NESTS[nestIndex];
+    const nest = this.nests[nestIndex];
     this.used.add(nestIndex);
     b.nest = nestIndex;
-    this._setScheme(b, nest.scheme);
-    const [x, y] = px2local(nest.c[0], nest.c[1]);
+    this._setScheme(b, (nest.scheme ?? 0) % SCHEMES.length);
+    const [x, y] = px2local(this.rig, nest.c[0], nest.c[1]);
     b.home.set(x, y, 0);
     b.homePx = nest.c;
     b.pos.set(x, y, -0.03);

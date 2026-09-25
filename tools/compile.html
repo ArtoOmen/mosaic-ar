@@ -3,50 +3,65 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Компилятор мишени</title>
+<title>Сборка мишеней AR</title>
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
 <style>
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #12100e; color: #f6f0e4; font: 16px/1.5 system-ui, sans-serif; }
-  main { max-width: 560px; padding: 24px; }
+  main { max-width: 600px; padding: 24px; }
   h1 { font-size: 24px; margin: 0 0 8px; }
-  p { color: rgba(246, 240, 228, .7); }
-  input, button { font: inherit; }
-  button { margin-top: 16px; padding: 12px 20px; border: 0; border-radius: 999px; background: #efb43c; color: #1d160c; font-weight: 700; cursor: pointer; }
+  p, li { color: rgba(246, 240, 228, .72); }
+  code { color: #efb43c; }
+  button { margin: 16px 8px 0 0; padding: 12px 20px; border: 0; border-radius: 999px; background: #efb43c; color: #1d160c; font: inherit; font-weight: 700; cursor: pointer; }
+  button.ghost { background: rgba(246, 240, 228, .1); color: #f6f0e4; }
   button:disabled { opacity: .5; cursor: default; }
+  .thumbs { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  .thumbs figure { margin: 0; width: 120px; font-size: 12px; color: rgba(246, 240, 228, .6); }
+  .thumbs img { width: 120px; border-radius: 6px; display: block; }
   #log { margin-top: 16px; font-family: ui-monospace, Menlo, monospace; font-size: 14px; white-space: pre-wrap; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Компилятор мишени для AR</h1>
-  <p>Выберите фронтальное фото мозаики (то же самое изображение, что лежит в <code>assets/mural.jpg</code>). Получится файл <code>targets.mind</code> — положите его в <code>assets/</code>.</p>
-  <input type="file" id="file" accept="image/*">
-  <br><button id="go" disabled>Скомпилировать</button>
+  <h1>Сборка мишеней для AR</h1>
+  <p>Собирает <code>assets/targets.mind</code> из всех картинок, перечисленных в <code>assets/targets.json</code> (порядок важен). Скачанный файл положите в <code>assets/</code> вместо старого.</p>
+  <div class="thumbs" id="thumbs"></div>
+  <button id="all" disabled>Собрать все картинки</button>
+  <button id="pick" class="ghost">Или выбрать файлы вручную…</button>
+  <input type="file" id="file" accept="image/*" multiple hidden>
   <div id="log"></div>
 </main>
 <script type="module">
   import { Compiler } from '../vendor/mindar-image.prod.js';
   const $ = (s) => document.querySelector(s);
-  let img = null;
-  $('#file').onchange = async (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    img = new Image();
-    img.src = URL.createObjectURL(f);
-    await img.decode();
-    $('#log').textContent = `Изображение ${img.naturalWidth} × ${img.naturalHeight}`;
-    $('#go').disabled = false;
-  };
-  $('#go').onclick = async () => {
-    $('#go').disabled = true;
+  const log = (t) => { $('#log').textContent = t; };
+  const loadImg = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+
+  async function compile(images) {
+    $('#all').disabled = true;
     const c = new Compiler();
-    await c.compileImageTargets([img], (p) => { $('#log').textContent = `Компиляция… ${Math.round(p)}%`; });
+    await c.compileImageTargets(images, (p) => log(`Компиляция ${images.length} картинок… ${Math.round(p)}%`));
     const buf = await c.exportData();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([buf]));
     a.download = 'targets.mind';
     a.click();
-    $('#log').textContent = 'Готово: targets.mind скачан.';
-    $('#go').disabled = false;
+    window.__done = true;
+    log(`Готово: targets.mind (${images.length} шт.) скачан.`);
+    $('#all').disabled = false;
+  }
+
+  let manifest = [];
+  try {
+    manifest = (await (await fetch('../assets/targets.json')).json()).targets;
+    $('#thumbs').innerHTML = manifest.map((t, i) => `<figure><img src="../assets/t/${t.id}/mural.jpg" alt="">${i}: ${t.title}</figure>`).join('');
+    $('#all').disabled = false;
+  } catch (e) { log('Не удалось прочитать assets/targets.json — выберите файлы вручную.'); }
+
+  $('#all').onclick = async () => compile(await Promise.all(manifest.map((t) => loadImg(`../assets/t/${t.id}/mural.jpg`))));
+  $('#pick').onclick = () => $('#file').click();
+  $('#file').onchange = async (e) => {
+    const files = [...e.target.files];
+    if (files.length) compile(await Promise.all(files.map((f) => loadImg(URL.createObjectURL(f)))));
   };
 </script>
 </body>

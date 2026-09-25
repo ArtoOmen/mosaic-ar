@@ -1,8 +1,6 @@
 import * as THREE from 'three';
-import { IMG, EYES, BONES, px2local } from './rig.js';
+import { px2local } from './rig.js';
 
-const NB = BONES.length;
-const NE = EYES.length;
 const NP = 6; // simultaneous glow pulses
 const DEG = Math.PI / 180;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -17,7 +15,7 @@ void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
 
-const fragmentShader = /* glsl */ `
+const makeFragmentShader = (NB, NE) => /* glsl */ `
 precision highp float;
 #define NB ${NB}
 #define NE ${NE}
@@ -124,14 +122,21 @@ void main() {
   gl_FragColor = vec4(col, alpha);
 }`;
 
+// GLSL arrays cannot be empty: park a no-op bone / eye far outside the picture
+const NO_BONE = { t: 'breath', c: [-1e4, -1e4], r: [1, 1], a: 0 };
+const NO_EYE = { id: '-', c: [-1e4, -1e4], R: 1, lid: [0, 0, 0] };
+
 export class LivingMural {
-  constructor({ map, mask, full = false }) {
-    this.aspect = IMG.h / IMG.w;
+  constructor({ map, mask, rig, full = false }) {
+    this.rig = rig;
+    const BONES = rig.bones.length ? rig.bones : [NO_BONE];
+    const EYES = rig.eyes.length ? rig.eyes : [NO_EYE];
+    this.aspect = rig.h / rig.w;
     const u = {
       uMap: { value: map }, uMask: { value: mask },
-      uSize: { value: new THREE.Vector2(IMG.w, IMG.h) },
+      uSize: { value: new THREE.Vector2(rig.w, rig.h) },
       uTime: { value: 0 }, uLive: { value: 0 }, uReveal: { value: 0 },
-      uRevealC: { value: new THREE.Vector2(IMG.w / 2, IMG.h / 2) },
+      uRevealC: { value: new THREE.Vector2(rig.w / 2, rig.h / 2) },
       uOpacity: { value: 1 }, uFull: { value: full ? 1 : 0 },
       uView: { value: new THREE.Vector2() },
       uBoneA: { value: BONES.map(() => new THREE.Vector4()) },
@@ -143,7 +148,8 @@ export class LivingMural {
     };
     this.uniforms = u;
     this.material = new THREE.ShaderMaterial({
-      uniforms: u, vertexShader, fragmentShader, transparent: true, depthWrite: true,
+      uniforms: u, vertexShader, fragmentShader: makeFragmentShader(BONES.length, EYES.length),
+      transparent: true, depthWrite: true,
     });
     this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, this.aspect), this.material);
 
@@ -161,7 +167,7 @@ export class LivingMural {
     this.eyes = EYES.map((e, i) => {
       const key = e.g || e.id;
       if (!groups.has(key)) groups.set(key, { next: rand(0.8, 4), t0: -10, dur: 0.16, twice: false, slow: key === 'owl' });
-      const [lx, ly] = px2local(e.c[0], e.c[1]);
+      const [lx, ly] = px2local(rig, e.c[0], e.c[1]);
       return { ...e, i, grp: groups.get(key), local: new THREE.Vector3(lx, ly, 0), off: new THREE.Vector2(), sac: new THREE.Vector2(), sacNext: rand(0.5, 2) };
     });
     this.blinkGroups = [...groups.values()];
@@ -174,7 +180,7 @@ export class LivingMural {
   }
 
   // Start the activation wave from a point on the picture (px). instant = skip the wave.
-  awaken(t, cx = IMG.w / 2, cy = IMG.h / 2, instant = false) {
+  awaken(t, cx = this.rig.w / 2, cy = this.rig.h / 2, instant = false) {
     this.uniforms.uRevealC.value.set(cx, cy);
     this.revealT0 = instant ? t - 10 : t;
     this.liveTarget = 1;

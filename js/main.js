@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { LivingMural } from './mural.js';
 import { Flock } from './flock.js';
 import { BirdSong } from './audio.js';
-import { IMG } from './rig.js';
+import { loadManifest } from './rig.js';
 
 const $ = (s) => document.querySelector(s);
 const qs = new URLSearchParams(location.search);
@@ -33,7 +33,7 @@ const I18N = {
     errBusy: 'Камера занята другим приложением. Закройте его и попробуйте снова.',
     errInApp: 'Похоже, ссылка открыта во встроенном браузере приложения. Откройте её в Safari или Chrome — там камера работает.',
     errGeneric: 'Не удалось запустить дополненную реальность на этом устройстве.',
-    retry: 'Попробовать снова', close: 'Закрыть', sound: 'Звук',
+    retry: 'Попробовать снова', close: 'Закрыть', sound: 'Звук', other: 'Другая мозаика',
   },
   en: {
     chip: 'Augmented reality · no app needed',
@@ -58,7 +58,7 @@ const I18N = {
     errBusy: 'The camera is busy in another app. Close it and try again.',
     errInApp: 'Looks like this link opened inside an app. Open it in Safari or Chrome — the camera works there.',
     errGeneric: 'Could not start augmented reality on this device.',
-    retry: 'Try again', close: 'Close', sound: 'Sound',
+    retry: 'Try again', close: 'Close', sound: 'Sound', other: 'Another mosaic',
   },
 };
 const lang = qs.get('lang') === 'en' ? 'en' : 'ru';
@@ -68,6 +68,7 @@ document.querySelectorAll('[data-i18n]').forEach((el) => { const v = T[el.datase
 document.querySelectorAll('[data-i18n-html]').forEach((el) => { const v = T[el.dataset.i18nHtml]; if (v) el.innerHTML = v; });
 $('#btnClose').setAttribute('aria-label', T.close);
 $('#btnSound').setAttribute('aria-label', T.sound);
+$('#btnSwitch').setAttribute('aria-label', T.other);
 
 // ---------------------------------------------------------------- UI helpers
 const screens = ['#intro', '#loading', '#error'];
@@ -98,19 +99,26 @@ function setLoading(text) { $('#loadingText').textContent = text; show('#loading
 
 // ---------------------------------------------------------------- shared world
 const song = new BirdSong();
-let assets = null;
-async function loadAssets() {
-  if (assets) return assets;
-  const L = new THREE.TextureLoader();
-  const [map, mask] = await Promise.all([L.loadAsync('assets/mural.jpg'), L.loadAsync('assets/mask.png')]);
-  for (const t of [map, mask]) { t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4; }
-  return (assets = { map, mask });
+let assetsP = null;
+function loadAssets() {
+  assetsP = assetsP || (async () => {
+    const targets = await loadManifest();
+    const L = new THREE.TextureLoader();
+    await Promise.all(targets.map(async (t) => {
+      const [map, mask] = await Promise.all([L.loadAsync(t.dir + 'mural.jpg'), L.loadAsync(t.dir + 'mask.png')]);
+      for (const x of [map, mask]) { x.colorSpace = THREE.NoColorSpace; x.anisotropy = 4; }
+      Object.assign(t, { map, mask });
+    }));
+    return targets;
+  })().catch((e) => { assetsP = null; throw e; });
+  return assetsP;
 }
 
-function buildWorld(parent, { count }) {
-  const mural = new LivingMural({ ...assets });
+function buildWorld(parent, target, { count }) {
+  const mural = new LivingMural({ map: target.map, mask: target.mask, rig: target.rig });
   const flock = new Flock({
     count,
+    rig: target.rig,
     onEvent(type, b) {
       const pan = Math.max(-1, Math.min(1, b.pos.x * 1.8));
       if (type === 'emerge') {
@@ -125,7 +133,17 @@ function buildWorld(parent, { count }) {
   });
   parent.add(mural.mesh);
   parent.add(flock.group);
-  return { mural, flock };
+  return { mural, flock, target };
+}
+
+function disposeWorld(world) {
+  for (const root of [world.mural.mesh, world.flock.group]) {
+    root.parent && root.parent.remove(root);
+    root.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+    });
+  }
 }
 
 // Tap a painted bird: ripple + one of the birds flies out of it
@@ -136,7 +154,8 @@ function tapWorld(ev, camera, world, t) {
   ray.setFromCamera(ndc, camera);
   const hit = ray.intersectObject(world.mural.mesh, false)[0];
   if (!hit || !hit.uv) return;
-  const px = hit.uv.x * IMG.w, py = (1 - hit.uv.y) * IMG.h;
+  const { rig } = world.target;
+  const px = hit.uv.x * rig.w, py = (1 - hit.uv.y) * rig.h;
   world.mural.pulse(px, py, 55);
   song.unlock();
   if (!world.flock.launchFrom(t, px, py)) song.play('tweet', ndc.x * 0.8, 0.15);
@@ -178,7 +197,7 @@ async function openCamera() {
 class ARSession {
   async start() {
     setLoading(T.loadingCam);
-    const [stream] = await Promise.all([openCamera(), loadAssets()]);
+    const [stream, targets] = await Promise.all([openCamera(), loadAssets()]);
     this.stream = stream;
     setLoading(T.loadingAR);
     const { MindARThree } = await import('mindar-image-three');
@@ -186,6 +205,7 @@ class ARSession {
     const mindar = new MindARThree({
       container,
       imageTargetSrc: 'assets/targets.mind',
+      maxTrack: 1,
       uiLoading: 'no', uiScanning: 'no', uiError: 'no',
       filterMinCF: qs.has('cf') ? +qs.get('cf') : 0.001,
       filterBeta: qs.has('beta') ? +qs.get('beta') : 100,
@@ -210,19 +230,22 @@ class ARSession {
       });
     };
     mindar.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    const anchor = mindar.addAnchor(0);
-    this.anchor = anchor;
-    this.world = buildWorld(anchor.group, { count: 5 });
-    if (qs.has('debug')) this.world.mural.uniforms.uOpacity.value = 0.5;   // see-through: shows alignment
     this.clock = new THREE.Clock();
     this.inv = new THREE.Matrix4();
     this.cam = new THREE.Vector3(0, 0, 1.5);
     this.tracking = false;
-    this.awake = false;
-    this.lostAt = -1e9;
+    this.current = null;
     this.nextChirp = 0;
-    anchor.onTargetFound = () => this.found();
-    anchor.onTargetLost = () => this.lost();
+    // one anchor + one living world per picture; MindAR reports whichever it sees
+    this.entries = targets.map((target) => {
+      const anchor = mindar.addAnchor(target.index);
+      const world = buildWorld(anchor.group, target, { count: 5 });
+      if (qs.has('debug')) world.mural.uniforms.uOpacity.value = 0.5;   // see-through: shows alignment
+      const e = { anchor, world, awake: false, lostAt: -1e9 };
+      anchor.onTargetFound = () => this.found(e);
+      anchor.onTargetLost = () => this.lost(e);
+      return e;
+    });
     // MindAR swallows some async failures (e.g. a missing target file), so guard with a timeout
     await Promise.race([
       mindar.start(),
@@ -233,28 +256,34 @@ class ARSession {
     hideScreens();
     $('#hud').classList.remove('hidden');
     $('#badge').classList.add('hidden');
+    $('#btnSwitch').classList.add('hidden');
     $('#scan').classList.toggle('hidden', this.tracking);
+    this.scanPics = startScanSlideshow(targets);
     keepAwake(true);
 
-    this.onTap = (ev) => { if (this.tracking) tapWorld(ev, mindar.camera, this.world, this.clock.elapsedTime); };
+    this.onTap = (ev) => { if (this.tracking && this.current) tapWorld(ev, mindar.camera, this.current.world, this.clock.elapsedTime); };
     container.addEventListener('pointerdown', this.onTap);
     mindar.renderer.setAnimationLoop(() => this.frame());
     window.__mosaic = this; // handy for debugging
   }
 
-  found() {
+  get world() { return this.current && this.current.world; }
+  get targetId() { return this.current && this.current.world.target.id; }
+
+  found(e) {
     const t = this.clock.elapsedTime;
-    console.log('[mosaic] target found', t.toFixed(2));
+    console.log('[mosaic] target found', e.world.target.id, t.toFixed(2));
     this.tracking = true;
+    this.current = e;
     clearTimeout(this.scanTimer);
     $('#scan').classList.add('hidden');
-    const { mural, flock } = this.world;
-    if (!this.awake || t - this.lostAt > 8) {
+    const { mural, flock } = e.world;
+    if (!e.awake || t - e.lostAt > 8) {
       mural.sleep();
       flock.stop();
       mural.awaken(t);
       flock.start(t);
-      this.awake = true;
+      e.awake = true;
       song.play('magic', 0, 0.2);
       this.nextChirp = t + 1.2;
       toast(T.awake);
@@ -262,10 +291,11 @@ class ARSession {
     }
   }
 
-  lost() {
-    console.log('[mosaic] target lost', this.clock.elapsedTime.toFixed(2));
+  lost(e) {
+    e.lostAt = this.clock.elapsedTime;
+    console.log('[mosaic] target lost', e.world.target.id, e.lostAt.toFixed(2));
+    if (this.current !== e) return;
     this.tracking = false;
-    this.lostAt = this.clock.elapsedTime;
     clearTimeout(this.scanTimer);
     this.scanTimer = setTimeout(() => { if (!this.tracking) $('#scan').classList.remove('hidden'); }, 600);
   }
@@ -273,19 +303,23 @@ class ARSession {
   frame() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const t = this.clock.elapsedTime;
-    const g = this.anchor.group;
-    if (this.tracking && g.visible) {
-      this.inv.copy(g.matrix).invert();
-      this.cam.set(0, 0, 0).applyMatrix4(this.inv);
+    const e = this.current;
+    if (e) {
+      const g = e.anchor.group;
+      if (this.tracking && g.visible) {
+        this.inv.copy(g.matrix).invert();
+        this.cam.set(0, 0, 0).applyMatrix4(this.inv);
+      }
+      e.world.mural.update(t, dt, this.cam);
+      e.world.flock.update(t, dt, this.cam);
     }
-    this.world.mural.update(t, dt, this.cam);
-    this.world.flock.update(t, dt, this.cam);
     if (this.tracking && t > this.nextChirp) { song.ambient(true); this.nextChirp = t + rand(1.4, 4.2); }
     this.mindar.renderer.render(this.mindar.scene, this.mindar.camera);
   }
 
   stop() {
     if (this.stream) this.stream.getTracks().forEach((tr) => tr.stop());
+    if (this.scanPics) this.scanPics();
     const m = this.mindar;
     if (!m) return;
     m.renderer.setAnimationLoop(null);
@@ -301,21 +335,40 @@ class ARSession {
   }
 }
 
+// The scanning frame shows the pictures we can recognise, one after another
+function startScanSlideshow(targets) {
+  const img = $('.frame img');
+  const frame = $('.frame');
+  let i = 0;
+  const showPic = () => {
+    const t = targets[i % targets.length];
+    img.src = t.dir + 'mural.jpg';
+    frame.style.aspectRatio = `${t.rig.w} / ${t.rig.h}`;
+    i++;
+  };
+  showPic();
+  const id = targets.length > 1 ? setInterval(showPic, 2600) : 0;
+  return () => clearInterval(id);
+}
+
 // ---------------------------------------------------------------- demo session (no camera)
 class DemoSession {
+  constructor(which = 0) { this.which = which; }   // index, or a picture id
+
   async start() {
     setLoading(T.loadingDemo);
-    await loadAssets();
+    this.targets = await loadAssets();
+    const byId = this.targets.findIndex((t) => t.id === this.which);
+    this.index = byId >= 0 ? byId : Math.min(+this.which || 0, this.targets.length - 1);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(innerWidth, innerHeight);
     $('#stage').appendChild(renderer.domElement);
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(36, innerWidth / innerHeight, 0.01, 50);
-    const root = new THREE.Group();
-    scene.add(root);
+    this.root = new THREE.Group();
+    scene.add(this.root);
     this.renderer = renderer; this.scene = scene; this.camera = camera;
-    this.world = buildWorld(root, { count: qs.has('birds') ? +qs.get('birds') : 6 });
     this.clock = new THREE.Clock();
     this.look = new THREE.Vector2();
     this.lookT = new THREE.Vector2();
@@ -325,12 +378,11 @@ class DemoSession {
       camera.aspect = innerWidth / innerHeight;
       const f = 2 * Math.tan((camera.fov * Math.PI) / 360);
       const pad = 1.14;
-      this.dist = Math.max((IMG.h / IMG.w) * pad / f, pad / (f * camera.aspect));
+      const rig = this.world ? this.world.target.rig : this.targets[this.index].rig;
+      this.dist = Math.max((rig.h / rig.w) * pad / f, pad / (f * camera.aspect));
       camera.updateProjectionMatrix();
       renderer.setSize(innerWidth, innerHeight);
     };
-    this.onResize();
-    window.addEventListener('resize', this.onResize);
     this.onMove = (e) => { if (e.pointerType === 'mouse') this.lookT.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1); };
     this.onOrient = (e) => {
       if (e.gamma == null) return;
@@ -339,21 +391,35 @@ class DemoSession {
       this.gyro = true;
     };
     this.onTap = (ev) => tapWorld(ev, camera, this.world, this.clock.elapsedTime);
+    window.addEventListener('resize', this.onResize);
     window.addEventListener('pointermove', this.onMove);
     window.addEventListener('deviceorientation', this.onOrient);
     $('#stage').addEventListener('pointerdown', this.onTap);
 
+    this.show(this.index);
     hideScreens();
     $('#hud').classList.remove('hidden');
     $('#badge').classList.remove('hidden');
+    $('#btnSwitch').classList.toggle('hidden', this.targets.length < 2);
     $('#scan').classList.add('hidden');
-    this.world.mural.awaken(0.35);
-    this.world.flock.start(0.4);
-    song.play('magic', 0, 0.2);
     setTimeout(() => toast(T.demoToast, 5200), 1600);
     renderer.setAnimationLoop(() => this.frame());
     window.__mosaic = this;
   }
+
+  // show picture i (used for the first one and by the "another mosaic" button)
+  show(i) {
+    const t = this.clock.elapsedTime;
+    if (this.world) disposeWorld(this.world);
+    this.index = i % this.targets.length;
+    this.world = buildWorld(this.root, this.targets[this.index], { count: qs.has('birds') ? +qs.get('birds') : 6 });
+    this.onResize();
+    this.world.mural.awaken(t + 0.35);
+    this.world.flock.start(t + 0.4);
+    song.play('magic', 0, 0.2);
+  }
+
+  next() { this.show(this.index + 1); }
 
   frame() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
@@ -372,11 +438,13 @@ class DemoSession {
   }
 
   stop() {
+    if (!this.renderer) return;
     this.renderer.setAnimationLoop(null);
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('pointermove', this.onMove);
     window.removeEventListener('deviceorientation', this.onOrient);
     $('#stage').removeEventListener('pointerdown', this.onTap);
+    if (this.world) disposeWorld(this.world);
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
@@ -404,10 +472,10 @@ function showError(err) {
   show('#error');
 }
 
-async function run(Kind) {
+async function run(Kind, ...args) {
   song.unlock();
   if (session) { session.stop(); session = null; }
-  const s = new Kind();
+  const s = new Kind(...args);
   try {
     await s.start();
     session = s;
@@ -417,14 +485,32 @@ async function run(Kind) {
   }
 }
 
-async function startDemo() {
+async function startDemo(which = standIndex) {
   // iOS asks for motion permission; the tap we are in counts as the gesture
   try {
     if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
       DeviceOrientationEvent.requestPermission().catch(() => {});
     }
   } catch (e) { /* ignore */ }
-  run(DemoSession);
+  run(DemoSession, which);
+}
+
+// Desktop test stand: pick which mosaic is shown on the big picture (and in the demo)
+let standIndex = 0;
+async function setupStand() {
+  const targets = await loadManifest();
+  const byParam = targets.findIndex((t) => t.id === qs.get('t'));
+  const tabs = $('#standTabs');
+  const select = (i) => {
+    standIndex = i;
+    $('#standImg').src = targets[i].dir + 'photo.jpg';
+    tabs.querySelectorAll('button').forEach((b, j) => b.classList.toggle('on', i === j));
+  };
+  if (targets.length > 1) {
+    tabs.innerHTML = targets.map((t) => `<button type="button">${t.title}</button>`).join('');
+    tabs.querySelectorAll('button').forEach((b, i) => b.addEventListener('click', () => select(i)));
+  }
+  select(Math.max(0, byParam));
 }
 
 function closeSession() {
@@ -436,10 +522,11 @@ function closeSession() {
 }
 
 $('#btnAR').addEventListener('click', () => run(ARSession));
-$('#btnDemo').addEventListener('click', startDemo);
+$('#btnDemo').addEventListener('click', () => startDemo());
 $('#btnRetry').addEventListener('click', () => run(ARSession));
-$('#btnErrDemo').addEventListener('click', startDemo);
+$('#btnErrDemo').addEventListener('click', () => startDemo());
 $('#btnClose').addEventListener('click', closeSession);
+$('#btnSwitch').addEventListener('click', () => { if (session instanceof DemoSession) session.next(); });
 $('#btnSound').addEventListener('click', () => {
   song.unlock();
   const on = !$('#btnSound').classList.toggle('muted');
@@ -456,5 +543,6 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // warm up heavy downloads while the visitor reads the intro
+setupStand().catch(() => {});
 loadAssets().catch(() => {});
-if (qs.get('mode') === 'demo') startDemo();
+if (qs.get('mode') === 'demo') startDemo(qs.get('t') || 0);

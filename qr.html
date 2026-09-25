@@ -52,7 +52,7 @@
 <body>
 <main>
   <figure class="screen-only">
-    <img src="assets/mural-photo.jpg" alt="Мозаика с птицами" id="muralImg">
+    <img src="assets/t/birds-a/photo.jpg" alt="Мозаика с птицами" id="muralImg">
     <figcaption>Для проверки: наведите телефон на эту картинку</figcaption>
   </figure>
   <section class="card">
@@ -87,7 +87,7 @@
   document.getElementById('url').textContent = target.replace(/^https?:\/\//, '');
   // fall back to the cropped mosaic if the full photo is missing
   const img = document.getElementById('muralImg');
-  img.onerror = () => { img.onerror = null; img.src = 'assets/mural.jpg'; };
+  img.onerror = () => { img.onerror = null; img.src = 'assets/t/birds-a/mural.jpg'; };
 </script>
 </body>
 </html>
