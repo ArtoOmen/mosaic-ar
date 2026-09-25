@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Компилятор мишени</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #12100e; color: #f6f0e4; font: 16px/1.5 system-ui, sans-serif; }
+  main { max-width: 560px; padding: 24px; }
+  h1 { font-size: 24px; margin: 0 0 8px; }
+  p { color: rgba(246, 240, 228, .7); }
+  input, button { font: inherit; }
+  button { margin-top: 16px; padding: 12px 20px; border: 0; border-radius: 999px; background: #efb43c; color: #1d160c; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  #log { margin-top: 16px; font-family: ui-monospace, Menlo, monospace; font-size: 14px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Компилятор мишени для AR</h1>
+  <p>Выберите фронтальное фото мозаики (то же самое изображение, что лежит в <code>assets/mural.jpg</code>). Получится файл <code>targets.mind</code> — положите его в <code>assets/</code>.</p>
+  <input type="file" id="file" accept="image/*">
+  <br><button id="go" disabled>Скомпилировать</button>
+  <div id="log"></div>
+</main>
+<script type="module">
+  import { Compiler } from '../vendor/mindar-image.prod.js';
+  const $ = (s) => document.querySelector(s);
+  let img = null;
+  $('#file').onchange = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    img = new Image();
+    img.src = URL.createObjectURL(f);
+    await img.decode();
+    $('#log').textContent = `Изображение ${img.naturalWidth} × ${img.naturalHeight}`;
+    $('#go').disabled = false;
+  };
+  $('#go').onclick = async () => {
+    $('#go').disabled = true;
+    const c = new Compiler();
+    await c.compileImageTargets([img], (p) => { $('#log').textContent = `Компиляция… ${Math.round(p)}%`; });
+    const buf = await c.exportData();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([buf]));
+    a.download = 'targets.mind';
+    a.click();
+    $('#log').textContent = 'Готово: targets.mind скачан.';
+    $('#go').disabled = false;
+  };
+</script>
+</body>
+</html>

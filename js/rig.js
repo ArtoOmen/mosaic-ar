@@ -1,0 +1,105 @@
+// Rig for the mosaic: every coordinate is in pixels of assets/mural.jpg (930 × 1001),
+// origin top-left. The same image is the AR tracking target (assets/targets.mind).
+
+export const IMG = { w: 930, h: 1001 };
+
+// Eyes: c = pupil centre, R = iris outer radius, lid = eyelid colour (sRGB), g = blink group
+export const EYES = [
+  { id: 'A',    c: [284.7, 143.5], R: 11.1, lid: [108, 32, 25] },
+  { id: 'C',    c: [533.6, 211.7], R: 12.2, lid: [40, 38, 42] },
+  { id: 'OwlL', c: [808.9, 190.6], R: 15.1, lid: [24, 25, 27], g: 'owl' },
+  { id: 'OwlR', c: [844.0, 193.5], R: 15.1, lid: [24, 25, 27], g: 'owl' },
+  { id: 'D',    c: [193.2, 392.0], R: 12.2, lid: [40, 42, 44] },
+  { id: 'E',    c: [416.5, 377.2], R: 11.0, lid: [45, 42, 44] },
+  { id: 'F',    c: [364.3, 673.1], R: 12.0, lid: [48, 44, 44] },
+  { id: 'G',    c: [790.9, 408.7], R: 11.2, lid: [114, 45, 48] },
+  { id: 'H',    c: [103.2, 749.0], R: 11.5, lid: [184, 70, 50] },
+  { id: 'I',    c: [232.4, 768.1], R: 11.3, lid: [124, 34, 30] },
+  { id: 'J',    c: [852.4, 776.7], R: 11.2, lid: [30, 28, 30] },
+];
+
+// Bones warp the picture locally (puppet-warp style): everything inside the soft
+// ellipse (c, r) rotates around pivot p. Types:
+//   head   – quick turns and holds, like a real bird
+//   owl    – slow, curious head tilts
+//   flap   – wing flutter in short bursts
+//   sway   – smooth wind-like swing (f = Hz)
+//   bob    – vertical bounce in px (berries)
+//   breath – subtle scale
+export const BONES = [
+  // Bird A — striped fan tail, top-left
+  { t: 'head',   p: [268, 172], c: [292, 146], r: [50, 28], a: 12.5 },
+  { t: 'sway',   p: [165, 272], c: [112, 178], r: [58, 92], a: 3.5, f: 0.35 },
+  { t: 'flap',   p: [238, 205], c: [185, 195], r: [55, 40], a: 7 },
+  // Bird B — long neck
+  { t: 'sway',   p: [432, 218], c: [448, 135], r: [62, 48], a: 5, f: 0.22 },
+  // Bird C and the leaves around it
+  { t: 'head',   p: [548, 246], c: [530, 213], r: [36, 25], a: 15 },
+  { t: 'sway',   p: [598, 248], c: [625, 175], r: [42, 58], a: 4, f: 0.3 },
+  { t: 'sway',   p: [470, 322], c: [476, 272], r: [38, 42], a: 4, f: 0.27 },
+  // Owl
+  { t: 'owl',    p: [828, 240], c: [828, 186], r: [56, 44], a: 13.8 },
+  { t: 'flap',   p: [778, 236], c: [736, 225], r: [40, 88], a: 5 },
+  { t: 'flap',   p: [872, 240], c: [888, 292], r: [22, 55], a: 4 },
+  // Bird D — left panel
+  { t: 'head',   p: [182, 432], c: [205, 393], r: [48, 27], a: 12.5 },
+  { t: 'sway',   p: [145, 525], c: [85, 590],  r: [62, 58], a: 4.5, f: 0.3 },
+  { t: 'flap',   p: [186, 452], c: [205, 490], r: [28, 36], a: 6 },
+  { t: 'sway',   p: [160, 402], c: [100, 360], r: [62, 42], a: 2.5, f: 0.2 },
+  // Bird E — top of the tree
+  { t: 'head',   p: [412, 410], c: [418, 379], r: [38, 25], a: 15 },
+  { t: 'flap',   p: [420, 428], c: [370, 442], r: [52, 34], a: 6 },
+  // Bird F — small one under the tree
+  { t: 'head',   p: [372, 696], c: [362, 673], r: [28, 20], a: 17.5 },
+  { t: 'flap',   p: [396, 690], c: [426, 702], r: [33, 36], a: 8 },
+  // Tree, flowers, berries
+  { t: 'sway',   p: [495, 900], c: [495, 470], r: [210, 150], a: 1.0, f: 0.18 },
+  { t: 'sway',   p: [430, 578], c: [430, 578], r: [30, 30], a: 18, f: 0.45 },
+  { t: 'sway',   p: [600, 650], c: [600, 650], r: [72, 70], a: 5, f: 0.25 },
+  { t: 'bob',    c: [642, 512], r: [16, 16], a: 2.2, f: 0.6 },
+  { t: 'bob',    c: [675, 522], r: [16, 16], a: 2.2, f: 0.55 },
+  // Bird G — right panel
+  { t: 'head',   p: [808, 440], c: [795, 411], r: [46, 24], a: 13.8 },
+  { t: 'sway',   p: [860, 510], c: [885, 546], r: [26, 44], a: 6, f: 0.5 },
+  { t: 'flap',   p: [800, 462], c: [772, 486], r: [28, 28], a: 7 },
+  { t: 'sway',   p: [840, 705], c: [835, 640], r: [66, 52], a: 3, f: 0.23 },
+  // Bird H — orange head, bottom-left
+  { t: 'head',   p: [100, 786], c: [114, 752], r: [44, 30], a: 12.5 },
+  { t: 'sway',   p: [122, 902], c: [70, 932],  r: [58, 52], a: 4, f: 0.3 },
+  // Bird I — red bird on the block
+  { t: 'head',   p: [222, 800], c: [240, 768], r: [40, 25], a: 15 },
+  { t: 'flap',   p: [205, 802], c: [176, 812], r: [30, 40], a: 7 },
+  // Berries, bottom-left
+  { t: 'bob',    c: [322, 822], r: [16, 16], a: 2.0, f: 0.5 },
+  { t: 'bob',    c: [292, 849], r: [16, 16], a: 2.0, f: 0.62 },
+  { t: 'bob',    c: [325, 855], r: [16, 16], a: 2.0, f: 0.58 },
+  { t: 'bob',    c: [350, 840], r: [16, 16], a: 2.0, f: 0.66 },
+  // Bird J — bottom-right, and the star
+  { t: 'head',   p: [848, 815], c: [858, 778], r: [44, 22], a: 12.5 },
+  { t: 'sway',   p: [700, 896], c: [700, 936], r: [82, 48], a: 4.5, f: 0.33 },
+  { t: 'breath', c: [830, 862], r: [48, 58], a: 0.025 },
+  { t: 'sway',   p: [620, 827], c: [620, 827], r: [32, 28], a: 22, f: 0.4 },
+];
+
+// Painted birds the 3D birds fly out of (and return to). scheme picks the 3D colours.
+export const NESTS = [
+  { c: [250, 190], scheme: 0 },
+  { c: [540, 250], scheme: 0 },
+  { c: [828, 230], scheme: 3 },
+  { c: [175, 460], scheme: 1 },
+  { c: [400, 420], scheme: 0 },
+  { c: [380, 690], scheme: 1 },
+  { c: [820, 470], scheme: 1 },
+  { c: [120, 800], scheme: 2 },
+  { c: [215, 810], scheme: 0 },
+  { c: [830, 850], scheme: 2 },
+];
+
+// Mosaic palette sampled from the mural (sunlit values)
+export const PAL = {
+  red: 0xb8282a, verm: 0xd4552f, orange: 0xe3892f, ochre: 0xefb43c,
+  cream: 0xefe5cf, black: 0x1c1b1e, blue: 0x2b6397, sky: 0x7cb0d8,
+  teal: 0x2f6f6c, sage: 0x5c8f86,
+};
+
+export const px2local = (x, y) => [x / IMG.w - 0.5, (IMG.h / 2 - y) / IMG.w];
