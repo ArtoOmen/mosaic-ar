@@ -16,7 +16,10 @@ export class BirdSong {
   unlock() {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
-    if (!this.ctx) {
+    if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
+      try { navigator.audioSession.type = 'playback'; } catch { /* Optional on older browsers. */ }
+    }
+    if (!this.ctx || this.ctx.state === 'closed') {
       const ctx = (this.ctx = new AC());
       this.out = ctx.createGain();
       this.out.gain.value = this.on && this.active ? 0.55 : 0;
@@ -56,7 +59,7 @@ export class BirdSong {
       s.connect(ctx.destination);
       s.start(0);
     }
-    if (this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
+    return this.ctx.state === 'running' ? Promise.resolve() : this.ctx.resume();
   }
 
   setOn(v) {
@@ -70,7 +73,7 @@ export class BirdSong {
   }
 
   suspend() { if (this.ctx && this.ctx.state === 'running') this.ctx.suspend(); }
-  resume() { if (this.ctx && this.ctx.state !== 'running') this.ctx.resume(); }
+  resume() { if (this.on && this.ctx && this.ctx.state !== 'running') this.ctx.resume().catch(() => {}); }
 
   // dark, decaying noise: a small open-air room
   _roomImpulse(secs) {

@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import { LivingMural } from './mural.js?v=flight6';
 import { TrackedPose } from './tracked-pose.js?v=flight6';
 import { CanvasDemo } from './canvas-demo.js?v=kiln11';
-import { PerchedFlock } from './perched-flock.js?v=kiln11';
+import { PerchedFlock } from './perched-flock.js?v=portrait12';
 import { Flock } from './flock.js';
-import { BirdSong } from './audio.js?v=plumage10';
+import { BirdSong } from './audio.js?v=portrait12';
 import { loadManifest } from './rig.js?v=volume9';
 
 const $ = (s) => document.querySelector(s);
@@ -112,13 +112,14 @@ function loadAssets() {
     const targets = await sceneManifest();
     const L = new THREE.TextureLoader();
     await Promise.all(targets.map(async (t) => {
-      const [map, mask, plumage] = await Promise.all([
+      const [map, mask, plumage, profiles] = await Promise.all([
         L.loadAsync(t.dir + 'mural.jpg'), L.loadAsync(t.dir + 'mask.png'),
-        t.rig.birds ? L.loadAsync(t.dir + 'plumage.webp') : null
+        t.rig.birds ? L.loadAsync(t.dir + 'portraits.webp') : null,
+        t.rig.birds ? fetch(t.dir + 'profiles.json').then(r=>r.json()) : null
       ]);
       for (const x of [map, mask]) { x.colorSpace = THREE.NoColorSpace; x.anisotropy = 4; }
       if (plumage) plumage.colorSpace = THREE.SRGBColorSpace;
-      Object.assign(t, {map, mask, plumage});
+      Object.assign(t, {map, mask, plumage, profiles});
     }));
     return targets;
   })().catch((e) => { assetsP = null; throw e; });
@@ -169,7 +170,6 @@ function tapWorld(ev, camera, world, t) {
   const { rig } = world.target;
   const px = hit.uv.x * rig.w, py = (1 - hit.uv.y) * rig.h;
   world.mural.pulse(px, py, 55);
-  song.unlock();
   world.flock.launchFrom(t, px, py);
   if (navigator.vibrate) navigator.vibrate(12);
 }
@@ -305,6 +305,7 @@ class ARSession {
     $('#badge').classList.add('hidden');
     $('#btnSwitch').classList.add('hidden');
     $('#scan').classList.toggle('hidden', this.tracking);
+    song.scene(true);
     this.scanPics = startScanSlideshow(targets);
     keepAwake(true);
 
@@ -343,7 +344,6 @@ class ARSession {
     console.log('[mosaic] target lost', e.world.target.id, e.lostAt.toFixed(2));
     if (this.current !== e) return;
     this.tracking = false;
-    song.scene(false);
     clearTimeout(this.scanTimer);
     this.scanTimer = setTimeout(() => { if (!this.tracking) $('#scan').classList.remove('hidden'); }, 600);
   }
@@ -536,8 +536,6 @@ function showError(err) {
 }
 
 async function run(Kind, ...args) {
-  song.unlock();
-  if (song.ctx) song.ctx.onstatechange = syncSoundButton;
   syncSoundButton();
   if (session) { session.stop(); session = null; }
   const s = new Kind(...args);
@@ -581,12 +579,23 @@ function closeSession() {
   show('#intro');
 }
 
-$('#btnAR').addEventListener('click', () => run(ARSession));
-$('#btnDemo').addEventListener('click', () => startDemo());
-$('#btnRetry').addEventListener('click', () => run(ARSession));
-$('#btnErrDemo').addEventListener('click', () => startDemo());
+$('#btnAR').addEventListener('click', () => { if (song.on) enableSceneAudio(); run(ARSession); });
+$('#btnDemo').addEventListener('click', () => { if (song.on) enableSceneAudio(); startDemo(); });
+$('#btnRetry').addEventListener('click', () => { if (song.on) enableSceneAudio(); run(ARSession); });
+$('#btnErrDemo').addEventListener('click', () => { if (song.on) enableSceneAudio(); startDemo(); });
 $('#btnClose').addEventListener('click', closeSession);
 $('#btnSwitch').addEventListener('click', () => { if (session instanceof DemoSession) session.next(); });
+function enableSceneAudio(confirm = false) {
+  const started = song.unlock();
+  if (!song.ctx) return;
+  song.ctx.onstatechange = syncSoundButton;
+  started?.then(() => {
+    syncSoundButton();
+    if (confirm) song.play('magic', 0, .12);
+  }).catch(syncSoundButton);
+}
+// click fires after a touch is released, when mobile browsers grant activation.
+$('#stage').addEventListener('click', () => { if (song.on && song.ctx?.state !== 'running') enableSceneAudio(); });
 function syncSoundButton() {
   const playing = song.on && song.ctx?.state === 'running';
   const button = $('#btnSound');
@@ -600,12 +609,12 @@ syncSoundButton();
 $('#btnSound').addEventListener('click', () => {
   const enable = !(song.on && song.ctx?.state === 'running');
   song.setOn(enable);
-  if (enable) song.unlock();
+  if (enable) enableSceneAudio(true);
   syncSoundButton();
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { song.scene(false); song.suspend(); return; }
-  if (session) { song.resume(); song.scene(!(session instanceof ARSession) || session.tracking); }
+  if (session) { song.resume(); song.scene(true); }
   if (session instanceof ARSession) {
     keepAwake(true);
     const v = session.mindar && session.mindar.video;

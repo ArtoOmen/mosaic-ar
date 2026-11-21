@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeMosaicBird } from './mosaic-bird.js?v=kiln11';
+import { makeMosaicBird } from './mosaic-bird.js?v=portrait12';
 import { PerchEffect } from './perch-effect.js';
 import { px2local } from './rig.js';
 
@@ -20,7 +20,7 @@ export class PerchedFlock {
       const rig = target.rig;
       const homePx = [x + w / 2, y + h / 2];
       const [cx, cy] = px2local(rig, ...homePx);
-      const model = makeMosaicBird(rig.birds[i], target.plumage, i);
+      const model = makeMosaicBird(rig.birds[i], target.plumage, target.profiles[i], i);
       const mesh = model.obj;
       mesh.position.set(cx, cy, .00015);
       const effect = new PerchEffect(mesh.position, h / rig.w);
@@ -125,7 +125,7 @@ export class PerchedFlock {
       const wrist = effort * (.48 * Math.sin(wingCycle - .85) - .27 * recovery);
       for (const [wing, side] of [[model.wl, -1], [model.wr, 1]]) {
         // Feather pitch presents the broad surface on the power stroke and slices air on recovery.
-        wing.sh.rotation.x = .26 + .38 * effort * Math.cos(wingCycle);
+        wing.sh.rotation.x = (owl ? .62 : .38) + .38 * effort * Math.cos(wingCycle);
         wing.el.rotation.x = .12 + .21 * effort * Math.cos(wingCycle - .85);
         wing.sh.rotation.z = side * shoulder;
         wing.el.rotation.z = side * wrist;
