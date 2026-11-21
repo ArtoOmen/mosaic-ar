@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { LivingMural } from './mural.js';
+import { CanvasDemo } from './canvas-demo.js';
+import { PerchedFlock } from './perched-flock.js';
 import { Flock } from './flock.js';
 import { BirdSong } from './audio.js';
 import { loadManifest } from './rig.js';
@@ -13,7 +15,7 @@ const I18N = {
   ru: {
     chip: 'Дополненная реальность · без приложения',
     title: 'Живая <em>мозаика</em>',
-    lead: 'Наведите камеру на мозаику — птицы проснутся, начнут крутить головами, моргать и вылетать прямо из стены.',
+    lead: 'Наведите камеру на мозаику — птицы взлетят с веток и вернутся на дерево.',
     start: 'Оживить птиц', demo: 'Посмотреть без камеры',
     note: 'Работает прямо в браузере. Включите звук — птицы поют.',
     phoneTitle: 'Откройте на телефоне',
@@ -38,7 +40,7 @@ const I18N = {
   en: {
     chip: 'Augmented reality · no app needed',
     title: 'Living <em>mosaic</em>',
-    lead: 'Point your camera at the mosaic — the birds wake up, turn their heads, blink and fly right out of the wall.',
+    lead: 'Point your camera at the mosaic — the birds wake up, lift off their branches and return to the tree.',
     start: 'Wake the birds', demo: 'Watch without camera',
     note: 'Runs right in your browser. Turn the sound on — the birds sing.',
     phoneTitle: 'Open on your phone',
@@ -105,9 +107,14 @@ function loadAssets() {
     const targets = await loadManifest();
     const L = new THREE.TextureLoader();
     await Promise.all(targets.map(async (t) => {
-      const [map, mask] = await Promise.all([L.loadAsync(t.dir + 'mural.jpg'), L.loadAsync(t.dir + 'mask.png')]);
+      const [map, mask] = await Promise.all([L.loadAsync(t.dir + (t.rig.birds ? 'branches.jpg' : 'mural.jpg')), L.loadAsync(t.dir + 'mask.png')]);
       for (const x of [map, mask]) { x.colorSpace = THREE.NoColorSpace; x.anisotropy = 4; }
       Object.assign(t, { map, mask });
+      if (t.rig.birds) {
+        t.sprites = await Promise.all(t.rig.birds.map((_, i) => L.loadAsync(t.dir + 'bird-' + i + '.png')));
+        t.hiddenBodies = await Promise.all(t.rig.birds.map(bird => bird.hiddenBody ? L.loadAsync(t.dir + bird.hiddenBody) : null));
+        for (const sprite of [...t.sprites, ...t.hiddenBodies].filter(Boolean)) sprite.colorSpace = THREE.SRGBColorSpace;
+      }
     }));
     return targets;
   })().catch((e) => { assetsP = null; throw e; });
@@ -115,22 +122,19 @@ function loadAssets() {
 }
 
 function buildWorld(parent, target, { count }) {
-  const mural = new LivingMural({ map: target.map, mask: target.mask, rig: target.rig });
-  const flock = new Flock({
-    count,
-    rig: target.rig,
-    onEvent(type, b) {
+  const mural = new LivingMural({ map: target.map, mask: target.mask, rig: target.rig, full: Boolean(target.rig.birds) });
+  function onEvent(type, b) {
       const pan = Math.max(-1, Math.min(1, b.pos.x * 1.8));
       if (type === 'emerge') {
         song.play('flutter', pan, 0.06);
-        song.play(b.scheme === 3 ? 'whistle' : Math.random() < 0.6 ? 'tweet' : 'warble', pan, 0.09, 0.15);
+        song.play(b.voice || 'tweet', pan, 0.075, 0.12);
         mural.pulse(b.homePx[0], b.homePx[1], 85);
       } else if (type === 'merge') {
         song.play('flutter', pan, 0.05);
         mural.pulse(b.homePx[0], b.homePx[1], 65);
       }
-    },
-  });
+  }
+  const flock = target.rig.birds ? new PerchedFlock(target, onEvent) : new Flock({ count, rig: target.rig, onEvent });
   parent.add(mural.mesh);
   parent.add(flock.group);
   return { mural, flock, target };
@@ -159,7 +163,7 @@ function tapWorld(ev, camera, world, t) {
   const px = hit.uv.x * rig.w, py = (1 - hit.uv.y) * rig.h;
   world.mural.pulse(px, py, 55);
   song.unlock();
-  if (!world.flock.launchFrom(t, px, py)) song.play('tweet', ndc.x * 0.8, 0.08);
+  world.flock.launchFrom(t, px, py);
   if (navigator.vibrate) navigator.vibrate(12);
 }
 
@@ -310,13 +314,13 @@ class ARSession {
     clearTimeout(this.scanTimer);
     $('#scan').classList.add('hidden');
     const { mural, flock } = e.world;
+    song.scene(true);
     if (!e.awake || t - e.lostAt > 8) {
       mural.sleep();
       flock.stop();
       mural.awaken(t);
       flock.start(t);
       e.awake = true;
-      song.play('magic', 0, 0.14);
       this.nextChirp = t + 2.5;
       toast(T.awake);
       if (navigator.vibrate) navigator.vibrate([18, 40, 18]);
@@ -328,6 +332,7 @@ class ARSession {
     console.log('[mosaic] target lost', e.world.target.id, e.lostAt.toFixed(2));
     if (this.current !== e) return;
     this.tracking = false;
+    song.scene(false);
     clearTimeout(this.scanTimer);
     this.scanTimer = setTimeout(() => { if (!this.tracking) $('#scan').classList.remove('hidden'); }, 600);
   }
@@ -336,7 +341,7 @@ class ARSession {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const t = this.clock.elapsedTime;
     const e = this.current;
-    if (e) {
+    if (e && this.tracking) {
       const g = e.anchor.group;
       if (this.tracking && g.visible) {
         this.inv.copy(g.matrix).invert();
@@ -360,6 +365,7 @@ class ARSession {
     if (this.ro) this.ro.disconnect();
     if (window.visualViewport && this.refit) visualViewport.removeEventListener('resize', this.refit);
     if (m.video && this.onVideoResize) m.video.removeEventListener('resize', this.onVideoResize);
+    for (const entry of this.entries || []) disposeWorld(entry.world);
     m.renderer.dispose();
     m.renderer.domElement.remove();
     m.cssRenderer.domElement.remove();
@@ -395,12 +401,19 @@ class DemoSession {
     this.targets = await loadAssets();
     const byId = this.targets.findIndex((t) => t.id === this.which);
     this.index = byId >= 0 ? byId : Math.min(+this.which || 0, this.targets.length - 1);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    let renderer;
+    try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); }
+    catch (error) {
+      if (!this.targets[this.index].rig.birds) throw error;
+      renderer = new CanvasDemo(() => this.world);
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(innerWidth, innerHeight);
     $('#stage').appendChild(renderer.domElement);
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(36, innerWidth / innerHeight, 0.01, 50);
+    const camera = renderer instanceof CanvasDemo
+      ? new THREE.OrthographicCamera(-1, 1, 1, -1, .01, 50)
+      : new THREE.PerspectiveCamera(36, innerWidth / innerHeight, .01, 50);
     this.root = new THREE.Group();
     scene.add(this.root);
     this.renderer = renderer; this.scene = scene; this.camera = camera;
@@ -413,10 +426,16 @@ class DemoSession {
     this.onResize = () => {
       const w = stage.clientWidth || innerWidth, h = stage.clientHeight || innerHeight;
       camera.aspect = w / h;
-      const f = 2 * Math.tan((camera.fov * Math.PI) / 360);
-      const pad = 1.14;
+      const f = 2 * Math.tan(36 * Math.PI / 360);
+      const pad = 1.48;
       const rig = this.world ? this.world.target.rig : this.targets[this.index].rig;
       this.dist = Math.max((rig.h / rig.w) * pad / f, pad / (f * camera.aspect));
+      if (camera.isOrthographicCamera) {
+        camera.top = this.dist * f / 2;
+        camera.bottom = -camera.top;
+        camera.right = camera.top * camera.aspect;
+        camera.left = -camera.right;
+      }
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
     };
@@ -455,7 +474,7 @@ class DemoSession {
     this.onResize();
     this.world.mural.awaken(t + 0.35);
     this.world.flock.start(t + 0.4);
-    song.play('magic', 0, 0.14);
+    song.scene(true);
   }
 
   next() { this.show(this.index + 1); }
@@ -543,7 +562,7 @@ async function setupStand() {
   const tabs = $('#standTabs');
   const select = (i) => {
     standIndex = i;
-    $('#standImg').src = targets[i].dir + 'photo.jpg';
+    $('#standImg').src = targets[i].dir + (targets[i].rig.birds ? 'mural.jpg' : 'photo.jpg');
     tabs.querySelectorAll('button').forEach((b, j) => b.classList.toggle('on', i === j));
   };
   if (targets.length > 1) {
@@ -554,6 +573,7 @@ async function setupStand() {
 }
 
 function closeSession() {
+  song.scene(false);
   if (session) { session.stop(); session = null; }
   $('#hud').classList.add('hidden');
   $('#scan').classList.add('hidden');
@@ -571,10 +591,11 @@ $('#btnSound').addEventListener('click', () => {
   song.unlock();
   const on = !$('#btnSound').classList.toggle('muted');
   song.setOn(on);
+  $('#btnSound').setAttribute('aria-pressed', String(on));
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { song.suspend(); return; }
-  song.resume();
+  if (document.hidden) { song.scene(false); song.suspend(); return; }
+  if (session) { song.resume(); song.scene(!(session instanceof ARSession) || session.tracking); }
   if (session instanceof ARSession) {
     keepAwake(true);
     const v = session.mindar && session.mindar.video;

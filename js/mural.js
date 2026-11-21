@@ -118,7 +118,7 @@ void main() {
   float shown = smoothstep(front, front - 0.07, dr);
   float wave = exp(-pow((dr - front) * 20.0, 2.0)) * (1.0 - smoothstep(0.8, 1.0, uReveal)) * step(0.001, uReveal);
   col += vec3(1.0, 0.88, 0.6) * wave;
-  float alpha = mix(m.g, 1.0, uFull) * max(shown, wave * 0.9) * uOpacity;
+  float alpha = mix(m.g * max(shown, wave * 0.9), 1.0, uFull) * uOpacity;
   gl_FragColor = vec4(col, alpha);
 }`;
 

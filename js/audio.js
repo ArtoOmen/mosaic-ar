@@ -7,6 +7,7 @@ export class BirdSong {
   constructor() {
     this.ctx = null;
     this.on = true;
+    this.active = false;
   }
 
   // Must be called from a user gesture (tap) — iOS only allows audio after one.
@@ -16,7 +17,7 @@ export class BirdSong {
     if (!this.ctx) {
       const ctx = (this.ctx = new AC());
       this.out = ctx.createGain();
-      this.out.gain.value = this.on ? 0.55 : 0;
+      this.out.gain.value = this.on && this.active ? 0.55 : 0;
       const comp = ctx.createDynamicsCompressor();
       comp.threshold.value = -24;
       comp.knee.value = 20;
@@ -32,9 +33,9 @@ export class BirdSong {
       const dry = ctx.createGain();
       dry.gain.value = 0.75;
       const wet = ctx.createGain();
-      wet.gain.value = 0.4;
+      wet.gain.value = 0.17;
       const room = ctx.createConvolver();
-      room.buffer = this._roomImpulse(1.8);
+      room.buffer = this._roomImpulse(.65);
       this.bus.connect(tone);
       tone.connect(dry);
       tone.connect(room);
@@ -58,7 +59,12 @@ export class BirdSong {
 
   setOn(v) {
     this.on = v;
-    if (this.ctx) this.out.gain.setTargetAtTime(v ? 0.55 : 0, this.ctx.currentTime, 0.08);
+    this.scene(this.active);
+  }
+
+  scene(active) {
+    this.active = active;
+    if (this.ctx) this.out.gain.setTargetAtTime(active && this.on ? .55 : 0, this.ctx.currentTime, .012);
   }
 
   suspend() { if (this.ctx && this.ctx.state === 'running') this.ctx.suspend(); }
@@ -158,7 +164,7 @@ export class BirdSong {
   }
 
   play(kind = 'tweet', pan = 0, vol = 0.1, when = 0) {
-    if (!this.ctx || !this.on || this.ctx.state !== 'running') return;
+    if (!this.ctx || !this.on || !this.active || document.hidden || this.ctx.state !== 'running') return;
     const t = this.ctx.currentTime + 0.02 + when;
     switch (kind) {
       case 'tweet': {

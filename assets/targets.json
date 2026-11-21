@@ -1,6 +1,1 @@
-{
- "targets": [
-  { "id": "birds-a", "title": "Мозаика 1" },
-  { "id": "birds-b", "title": "Мозаика 2" }
- ]
-}
+{"targets":[{"id":"tree","title":"Дерево с птицами"}]}
