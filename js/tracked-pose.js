@@ -37,7 +37,7 @@ export class TrackedPose {
   }
 
   update(dt) {
-    const a = -Math.expm1(-dt * 18);
+    const a = -Math.expm1(-dt * 10);
     this.root.position.lerp(this.pose.position, a);
     this.root.quaternion.slerp(this.pose.quaternion, a);
     this.root.scale.lerp(this.pose.scale, a);

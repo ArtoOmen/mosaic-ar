@@ -43,6 +43,7 @@ vec2 rot(vec2 v, float a) { float c = cos(a), s = sin(a); return vec2(c * v.x - 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 
 void main() {
+  if (uFull > 0.5) { gl_FragColor = texture2D(uMap, vUv); return; }
   vec2 p = vec2(vUv.x, 1.0 - vUv.y) * uSize;
   vec4 m = texture2D(uMask, vUv);
   float flex = m.r * uLive;

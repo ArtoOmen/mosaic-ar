@@ -2,10 +2,9 @@ import * as THREE from 'three';
 import { px2local } from './rig.js';
 
 export class PerchedFlock {
-  constructor(target, onEvent, cameraOverlay = false) {
+  constructor(target, onEvent) {
     this.group = new THREE.Group();
     this.onEvent = onEvent;
-    this.cameraOverlay = cameraOverlay;
     this.visibility = 1;
     this.birds = target.rig.birds.map(({ rect, direction, voice }, i) => {
       const [x, y, w, h] = rect;
@@ -17,7 +16,7 @@ export class PerchedFlock {
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(cx, cy, .00015);
       mesh.renderOrder = 3;
-      mesh.visible = !cameraOverlay;
+      mesh.visible = false;
       const parts = target.flightParts[i];
       const wings = (rig.birds[i].wings || []).map(({ pivot, direction }, j) => {
         const joint = new THREE.Group();
@@ -32,24 +31,6 @@ export class PerchedFlock {
         mesh.add(joint);
         return { joint, feather, direction };
       });
-      let patch;
-      if (cameraOverlay) {
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(target.map.image, x, y, w, h, 0, 0, w, h);
-        ctx.globalCompositeOperation = 'destination-in';
-        ctx.drawImage(target.sprites[i].image, 0, 0);
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.colorSpace = THREE.SRGBColorSpace;
-        patch = new THREE.Mesh(new THREE.PlaneGeometry(w/rig.w, h/rig.w),
-          new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthTest: false, depthWrite: false }));
-        patch.position.copy(mesh.position);
-        patch.renderOrder = 1;
-        patch.visible = false;
-        this.group.add(patch);
-      }
       let body;
       if (target.hiddenBodies[i]) {
         body = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
@@ -60,13 +41,13 @@ export class PerchedFlock {
         mesh.add(body);
       }
       this.group.add(mesh);
-      return { mesh, patch, body, pos: mesh.position, home: mesh.position.clone(), rect, homePx, voice, direction,
-        wings, parts, folded: target.sprites[i], start: null, airborne: false, duration: 3.8 + (i % 3) * .25 };
+      return { mesh, body, pos: mesh.position, home: mesh.position.clone(), rect, homePx, voice, direction,
+        wings, parts, folded: target.sprites[i], start: null, airborne: false, duration: voice === "hoot" ? 6.6 : 4.9 + (i % 4) * .32 };
     });
   }
 
   start(t) {
-    this.birds.forEach((bird, i) => { bird.start = t + .45 + i * .68; });
+    this.birds.forEach((bird, i) => { bird.start = t + .45 + i * 1.7; });
   }
 
   stop() {
@@ -74,8 +55,7 @@ export class PerchedFlock {
   }
 
   land(bird) {
-    bird.mesh.visible = !this.cameraOverlay;
-    if (bird.patch) bird.patch.visible = false;
+    bird.mesh.visible = false;
     bird.mesh.position.copy(bird.home);
     bird.mesh.rotation.set(0, 0, 0);
     bird.mesh.material.map = bird.folded;
@@ -107,28 +87,37 @@ export class PerchedFlock {
       }
       const angle = Math.PI * phase, arc = Math.sin(angle) ** 2;
       const edge = Math.min(1, elapsed / .25, (bird.duration-elapsed)/.28);
-      const opacity = this.cameraOverlay ? edge * edge * (3-2*edge) * this.visibility : 1;
+      const opacity = edge * edge * (3-2*edge) * this.visibility;
       bird.mesh.visible = true;
       bird.mesh.material.opacity = opacity;
-      if (bird.patch) {
-        bird.patch.visible = true;
-        bird.patch.material.opacity = opacity;
-      }
       if (bird.body) bird.body.material.opacity = opacity * Math.min(1, arc * 7);
+      const owl = bird.voice === 'hoot';
+      const inward = bird.home.x > 0 ? -1 : 1;
+      const sweep = Math.sin(2 * angle);
+      const turn = Math.cos(2 * angle);
+      const glide = THREE.MathUtils.smootherstep(phase, .31, .45)
+        * (1 - THREE.MathUtils.smootherstep(phase, .60, .73));
+      // Offset the outbound and return legs in height and depth.
+      const width = owl ? .38 : .21 + .035 * (i % 4);
+      const rise = bird.home.y > .23 ? .055 : .16 + .03 * (i % 3);
+      const wingRate = owl ? 6.4 : 7.6 + .5 * (i % 3);
+      const wingCycle = (phase - .12) * bird.duration * wingRate;
+      const lift = .009 * Math.sin(wingCycle) * (1 - glide);
       bird.pos.set(
-        bird.home.x + bird.direction * arc * (.082 + .054 * Math.sin(2 * angle)),
-        bird.home.y + arc * (.095 + .018 * Math.cos(2 * angle + i)),
-        bird.home.z + arc * (.07 + .012 * (i % 3))
+        bird.home.x + inward * arc * (width + .13 * sweep),
+        bird.home.y + arc * (rise + .09 * sweep + lift),
+        bird.home.z + arc * (.22 + .075 * turn)
       );
-      bird.mesh.rotation.set(.045 * arc * Math.sin(2 * angle), bird.direction * .16 * arc, bird.direction * .19 * Math.sin(2 * angle) * arc);
+      bird.mesh.rotation.set(arc * (.08 - .15 * sweep),
+        inward * arc * (.34 + .36 * sweep), inward * arc * (.12 + .38 * sweep));
       if (bird.parts) bird.mesh.material.map = bird.parts.body;
       // Open before lift-off, beat in flight, then hold a braking pose and tuck.
       const open = THREE.MathUtils.smootherstep(phase, 0, .12);
       const tuck = 1 - THREE.MathUtils.smootherstep(phase, .77, 1);
-      const stroke = (1 - Math.cos((phase - .12) * bird.duration * (11 + i % 3))) / 2;
+      const stroke = (1 - Math.cos(wingCycle)) / 2;
       const beating = THREE.MathUtils.smoothstep(phase, .12, .21)
         * (1 - THREE.MathUtils.smoothstep(phase, .63, .77));
-      const spread = open * tuck * (1 - .69 * beating * stroke);
+      const spread = open * tuck * (1 - .62 * beating * stroke * (1 - glide));
       for (const { joint, feather, direction } of bird.wings) {
         joint.visible = true;
         joint.rotation.set(.28 * spread, direction * .22 * spread, -direction * 1.78 * spread);

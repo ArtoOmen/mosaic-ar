@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { LivingMural } from './mural.js?v=exhibition2';
-import { TrackedPose } from './tracked-pose.js';
-import { CanvasDemo } from './canvas-demo.js?v=panel4';
-import { PerchedFlock } from './perched-flock.js?v=wing5';
+import { LivingMural } from './mural.js?v=flight6';
+import { TrackedPose } from './tracked-pose.js?v=flight6';
+import { CanvasDemo } from './canvas-demo.js?v=flight6';
+import { PerchedFlock } from './perched-flock.js?v=flight6';
 import { Flock } from './flock.js';
 import { BirdSong } from './audio.js';
 import { loadManifest } from './rig.js?v=wing5';
@@ -27,7 +27,7 @@ const I18N = {
     loadingCam: 'Запускаем камеру…', loadingAR: 'Учимся узнавать мозаику…', loadingDemo: 'Будим птиц…',
     scan: 'Наведите камеру на мозаику', scanSub: 'Поместите её целиком в рамку',
     awake: 'Птицы проснулись! Коснитесь птицы — она вылетит',
-    demoToast: 'Коснитесь птицы — она вылетит. Двигайте телефон или мышь, чтобы заглянуть сбоку',
+    demoToast: 'Коснитесь птицы, чтобы повторить её полёт',
     demoBadge: 'Демо без камеры',
     errTitle: 'Нет доступа к камере',
     errDenied: 'Разрешите этому сайту доступ к камере (в настройках браузера или по значку «аА» / замка в адресной строке) и попробуйте снова.',
@@ -52,7 +52,7 @@ const I18N = {
     loadingCam: 'Starting the camera…', loadingAR: 'Learning the mosaic…', loadingDemo: 'Waking the birds…',
     scan: 'Point the camera at the mosaic', scanSub: 'Fit the whole mosaic in the frame',
     awake: 'The birds are awake! Tap a bird to make it fly',
-    demoToast: 'Tap a bird to make it fly. Tilt the phone or move the mouse to look around',
+    demoToast: 'Tap a bird to replay its flight',
     demoBadge: 'Demo without camera',
     errTitle: 'No camera access',
     errDenied: 'Allow this site to use the camera (browser settings or the lock icon in the address bar) and try again.',
@@ -108,7 +108,7 @@ function loadAssets() {
     const targets = await loadManifest();
     const L = new THREE.TextureLoader();
     await Promise.all(targets.map(async (t) => {
-      const [map, mask] = await Promise.all([L.loadAsync(t.dir + (t.rig.birds ? 'branches.jpg' : 'mural.jpg')), L.loadAsync(t.dir + 'mask.png')]);
+      const [map, mask] = await Promise.all([L.loadAsync(t.dir + 'mural.jpg'), L.loadAsync(t.dir + 'mask.png')]);
       for (const x of [map, mask]) { x.colorSpace = THREE.NoColorSpace; x.anisotropy = 4; }
       Object.assign(t, { map, mask });
       if (t.rig.birds) {
@@ -144,7 +144,7 @@ function buildWorld(parent, target, { count, cameraOverlay = false }) {
         mural.pulse(b.homePx[0], b.homePx[1], 65);
       }
   }
-  const flock = target.rig.birds ? new PerchedFlock(target, onEvent, cameraOverlay) : new Flock({ count, rig: target.rig, onEvent });
+  const flock = target.rig.birds ? new PerchedFlock(target, onEvent) : new Flock({ count, rig: target.rig, onEvent });
   if (cameraOverlay && target.rig.birds) mural.mesh.visible = false;
   parent.add(mural.mesh);
   parent.add(flock.group);
@@ -443,8 +443,6 @@ class DemoSession {
     this.renderer = renderer; this.scene = scene; this.camera = camera;
     this.clock = new THREE.Clock();
     this.playTime = 0;
-    this.look = new THREE.Vector2();
-    this.lookT = new THREE.Vector2();
     this.nextChirp = 1.5;
 
     const stage = $('#stage');
@@ -461,22 +459,14 @@ class DemoSession {
         camera.right = camera.top * camera.aspect;
         camera.left = -camera.right;
       }
+      camera.position.set(0, 0, this.dist);
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
-    };
-    this.onMove = (e) => { if (e.pointerType === 'mouse') this.lookT.set((e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1); };
-    this.onOrient = (e) => {
-      if (e.gamma == null) return;
-      if (!this.base) this.base = { b: e.beta, g: e.gamma };
-      this.lookT.set(Math.max(-1, Math.min(1, (e.gamma - this.base.g) / 25)), Math.max(-1, Math.min(1, (e.beta - this.base.b) / 25)));
-      this.gyro = true;
     };
     this.onTap = (ev) => tapWorld(ev, camera, this.world, this.playTime);
     window.addEventListener('resize', this.onResize);
     this.ro = new ResizeObserver(() => this.onResize());
     this.ro.observe(stage);
-    window.addEventListener('pointermove', this.onMove);
-    window.addEventListener('deviceorientation', this.onOrient);
     $('#stage').addEventListener('pointerdown', this.onTap);
 
     this.show(this.index);
@@ -508,12 +498,6 @@ class DemoSession {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.playTime += dt;
     const t = this.playTime;
-    this.look.lerp(this.lookT, 1 - Math.exp(-dt * 4));
-    const yaw = this.look.x * 0.32;
-    const pitch = -this.look.y * 0.2;
-    const d = this.dist;
-    this.camera.position.set(Math.sin(yaw) * d, Math.sin(pitch) * d, Math.cos(yaw) * Math.cos(pitch) * d);
-    this.camera.lookAt(0, 0, 0);
     this.world.mural.update(t, dt, this.camera.position);
     this.world.flock.update(t, dt, this.camera.position);
     if (t > this.nextChirp) { song.ambient(true); this.nextChirp = t + rand(3, 7); }
@@ -525,8 +509,6 @@ class DemoSession {
     this.renderer.setAnimationLoop(null);
     window.removeEventListener('resize', this.onResize);
     if (this.ro) this.ro.disconnect();
-    window.removeEventListener('pointermove', this.onMove);
-    window.removeEventListener('deviceorientation', this.onOrient);
     $('#stage').removeEventListener('pointerdown', this.onTap);
     if (this.world) disposeWorld(this.world);
     this.renderer.dispose();
@@ -570,12 +552,6 @@ async function run(Kind, ...args) {
 }
 
 async function startDemo(which = standIndex) {
-  // iOS asks for motion permission; the tap we are in counts as the gesture
-  try {
-    if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
-      DeviceOrientationEvent.requestPermission().catch(() => {});
-    }
-  } catch (e) { /* ignore */ }
   run(DemoSession, which);
 }
 
