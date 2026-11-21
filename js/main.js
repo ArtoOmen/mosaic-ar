@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { LivingMural } from './mural.js?v=exhibition2';
 import { TrackedPose } from './tracked-pose.js';
 import { CanvasDemo } from './canvas-demo.js?v=panel4';
-import { PerchedFlock } from './perched-flock.js?v=panel4';
+import { PerchedFlock } from './perched-flock.js?v=wing5';
 import { Flock } from './flock.js';
 import { BirdSong } from './audio.js';
-import { loadManifest } from './rig.js?v=exhibition2';
+import { loadManifest } from './rig.js?v=wing5';
 
 const $ = (s) => document.querySelector(s);
 const qs = new URLSearchParams(location.search);
@@ -117,8 +117,8 @@ function loadAssets() {
         t.flightParts = await Promise.all(t.rig.birds.map(async (bird, i) => {
           if (!bird.wings) return null;
           const [body, ...wings] = await Promise.all([
-            L.loadAsync(t.dir + `body-${i}.png`),
-            ...bird.wings.map((_, j) => L.loadAsync(t.dir + `wing-${i}-${j}.png`))
+            L.loadAsync(t.dir + `body-${i}.png?v=wing5`),
+            ...bird.wings.map((_, j) => L.loadAsync(t.dir + `wing-${i}-${j}.png?v=wing5`))
           ]);
           for (const map of [body, ...wings]) map.colorSpace = THREE.SRGBColorSpace;
           return { body, wings };

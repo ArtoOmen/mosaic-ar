@@ -115,7 +115,6 @@ export class PerchedFlock {
         bird.patch.material.opacity = opacity;
       }
       if (bird.body) bird.body.material.opacity = opacity * Math.min(1, arc * 7);
-      const beat = Math.sin(elapsed * (12 + i % 3));
       bird.pos.set(
         bird.home.x + bird.direction * arc * (.082 + .054 * Math.sin(2 * angle)),
         bird.home.y + arc * (.095 + .018 * Math.cos(2 * angle + i)),
@@ -123,10 +122,16 @@ export class PerchedFlock {
       );
       bird.mesh.rotation.set(.045 * arc * Math.sin(2 * angle), bird.direction * .16 * arc, bird.direction * .19 * Math.sin(2 * angle) * arc);
       if (bird.parts) bird.mesh.material.map = bird.parts.body;
-      const spread = edge * (.58 + .42 * beat);
+      // Open before lift-off, beat in flight, then hold a braking pose and tuck.
+      const open = THREE.MathUtils.smootherstep(phase, 0, .12);
+      const tuck = 1 - THREE.MathUtils.smootherstep(phase, .77, 1);
+      const stroke = (1 - Math.cos((phase - .12) * bird.duration * (11 + i % 3))) / 2;
+      const beating = THREE.MathUtils.smoothstep(phase, .12, .21)
+        * (1 - THREE.MathUtils.smoothstep(phase, .63, .77));
+      const spread = open * tuck * (1 - .69 * beating * stroke);
       for (const { joint, feather, direction } of bird.wings) {
         joint.visible = true;
-        joint.rotation.set(.55 * spread, direction * .32 * spread, -direction * 1.35 * spread);
+        joint.rotation.set(.28 * spread, direction * .22 * spread, -direction * 1.78 * spread);
         feather.material.opacity = opacity;
       }
     }
