@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { LivingMural } from './mural.js';
+import { LivingMural } from './mural.js?v=exhibition2';
 import { CanvasDemo } from './canvas-demo.js';
 import { PerchedFlock } from './perched-flock.js';
 import { Flock } from './flock.js';
 import { BirdSong } from './audio.js';
-import { loadManifest } from './rig.js';
+import { loadManifest } from './rig.js?v=exhibition2';
 
 const $ = (s) => document.querySelector(s);
 const qs = new URLSearchParams(location.search);
@@ -121,8 +121,8 @@ function loadAssets() {
   return assetsP;
 }
 
-function buildWorld(parent, target, { count }) {
-  const mural = new LivingMural({ map: target.map, mask: target.mask, rig: target.rig, full: Boolean(target.rig.birds) });
+function buildWorld(parent, target, { count, cameraOverlay = false }) {
+  const mural = new LivingMural({ map: target.map, mask: target.mask, rig: target.rig, full: Boolean(target.rig.birds) && !cameraOverlay, cutout: Boolean(target.rig.birds) && cameraOverlay });
   function onEvent(type, b) {
       const pan = Math.max(-1, Math.min(1, b.pos.x * 1.8));
       if (type === 'emerge') {
@@ -226,7 +226,7 @@ class ARSession {
     const container = $('#stage');
     const mindar = new MindARThree({
       container,
-      imageTargetSrc: 'assets/targets.mind',
+      imageTargetSrc: 'assets/targets.mind?v=exhibition2',
       maxTrack: 1,
       uiLoading: 'no', uiScanning: 'no', uiError: 'no',
       filterMinCF: qs.has('cf') ? +qs.get('cf') : 0.001,
@@ -262,7 +262,7 @@ class ARSession {
     // one anchor + one living world per picture; MindAR reports whichever it sees
     this.entries = targets.map((target) => {
       const anchor = mindar.addAnchor(target.index);
-      const world = buildWorld(anchor.group, target, { count: 5 });
+      const world = buildWorld(anchor.group, target, { count: 5, cameraOverlay: true });
       if (qs.has('debug')) world.mural.uniforms.uOpacity.value = 0.5;   // see-through: shows alignment
       const e = { anchor, world, awake: false, lostAt: -1e9 };
       anchor.onTargetFound = () => this.found(e);

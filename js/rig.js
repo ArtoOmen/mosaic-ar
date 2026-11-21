@@ -24,7 +24,7 @@ export const PAL = {
 export const px2local = (rig, x, y) => [x / rig.w - 0.5, (rig.h / 2 - y) / rig.w];
 
 export async function loadManifest(base = 'assets/') {
-  const m = await (await fetch(base + 'targets.json')).json();
+  const m = await (await fetch(base + 'targets.json?v=exhibition2')).json();
   return Promise.all(m.targets.map(async (t, index) => {
     const dir = `${base}t/${t.id}/`;
     const rig = await (await fetch(dir + 'rig.json')).json();

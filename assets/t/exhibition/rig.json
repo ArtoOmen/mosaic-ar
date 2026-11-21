@@ -1,0 +1,99 @@
+{
+  "w": 1240,
+  "h": 1200,
+  "eyes": [],
+  "bones": [],
+  "birds": [
+    {
+      "rect": [
+        189,
+        79,
+        158,
+        222
+      ],
+      "voice": "tweet",
+      "direction": 1
+    },
+    {
+      "rect": [
+        433,
+        33,
+        286,
+        322
+      ],
+      "voice": "warble",
+      "direction": 1
+    },
+    {
+      "rect": [
+        938,
+        23,
+        287,
+        320
+      ],
+      "voice": "hoot",
+      "direction": -1
+    },
+    {
+      "rect": [
+        17,
+        429,
+        290,
+        347
+      ],
+      "voice": "whistle",
+      "direction": 1
+    },
+    {
+      "rect": [
+        633,
+        613,
+        268,
+        216
+      ],
+      "voice": "tweet",
+      "direction": -1
+    },
+    {
+      "rect": [
+        982,
+        432,
+        241,
+        301
+      ],
+      "voice": "whistle",
+      "direction": -1
+    },
+    {
+      "rect": [
+        16,
+        812,
+        354,
+        353
+      ],
+      "voice": "warble",
+      "direction": 1
+    },
+    {
+      "rect": [
+        821,
+        894,
+        396,
+        244
+      ],
+      "voice": "tweet",
+      "direction": -1
+    },
+    {
+      "rect": [
+        443,
+        505,
+        133,
+        159
+      ],
+      "direction": 1,
+      "voice": "tweet",
+      "hiddenBody": "chick-body.png"
+    }
+  ]
+}

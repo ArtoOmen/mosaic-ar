@@ -29,6 +29,7 @@ uniform float uReveal;        // 0..1 activation wave
 uniform vec2 uRevealC;
 uniform float uOpacity;
 uniform float uFull;          // 1 = draw the whole picture (demo), 0 = only the mural (AR)
+uniform bool uCutout;
 uniform vec2 uView;           // viewing direction, drives the glass sheen
 uniform vec4 uBoneA[NB];      // pivot.xy, centre.xy   (pivot.x < 0 => translation bone)
 uniform vec4 uBoneB[NB];      // radius.xy, angle, scale | shift.xy
@@ -117,8 +118,12 @@ void main() {
   float front = uReveal * 0.9;
   float shown = smoothstep(front, front - 0.07, dr);
   float wave = exp(-pow((dr - front) * 20.0, 2.0)) * (1.0 - smoothstep(0.8, 1.0, uReveal)) * step(0.001, uReveal);
-  col += vec3(1.0, 0.88, 0.6) * wave;
+  col += vec3(1.0, 0.88, 0.6) * wave * m.b;
   float alpha = mix(m.g * max(shown, wave * 0.9), 1.0, uFull) * uOpacity;
+  if (uCutout) {
+    if (m.g < 0.01) discard;
+    alpha = m.g * uOpacity;
+  }
   gl_FragColor = vec4(col, alpha);
 }`;
 
@@ -127,7 +132,7 @@ const NO_BONE = { t: 'breath', c: [-1e4, -1e4], r: [1, 1], a: 0 };
 const NO_EYE = { id: '-', c: [-1e4, -1e4], R: 1, lid: [0, 0, 0] };
 
 export class LivingMural {
-  constructor({ map, mask, rig, full = false }) {
+  constructor({ map, mask, rig, full = false, cutout = false }) {
     this.rig = rig;
     const BONES = rig.bones.length ? rig.bones : [NO_BONE];
     const EYES = rig.eyes.length ? rig.eyes : [NO_EYE];
@@ -137,7 +142,7 @@ export class LivingMural {
       uSize: { value: new THREE.Vector2(rig.w, rig.h) },
       uTime: { value: 0 }, uLive: { value: 0 }, uReveal: { value: 0 },
       uRevealC: { value: new THREE.Vector2(rig.w / 2, rig.h / 2) },
-      uOpacity: { value: 1 }, uFull: { value: full ? 1 : 0 },
+      uOpacity: { value: 1 }, uFull: { value: full ? 1 : 0 }, uCutout: { value: cutout },
       uView: { value: new THREE.Vector2() },
       uBoneA: { value: BONES.map(() => new THREE.Vector4()) },
       uBoneB: { value: BONES.map(() => new THREE.Vector4()) },
