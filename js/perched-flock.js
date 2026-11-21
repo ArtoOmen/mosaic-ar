@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createFlightModels } from './flock.js?v=volume9';
+import { makeMosaicBird } from './mosaic-bird.js';
 import { PerchEffect } from './perch-effect.js';
 import { px2local } from './rig.js';
 
@@ -8,18 +8,19 @@ export class PerchedFlock {
     this.group = new THREE.Group();
     this.onEvent = onEvent;
     this.visibility = 1;
-    this.models = createFlightModels();
     this.aim = new THREE.Matrix4();
     this.heading = new THREE.Quaternion();
     this.up = new THREE.Vector3(0, 1, 0);
     this.origin = new THREE.Vector3();
     this.ahead = new THREE.Vector3();
+    this.headAim = new THREE.Quaternion();
+    this.viewer = new THREE.Vector3();
     this.birds = target.rig.birds.map(({ rect, direction, voice, flight }, i) => {
       const [x, y, w, h] = rect;
       const rig = target.rig;
       const homePx = [x + w / 2, y + h / 2];
       const [cx, cy] = px2local(rig, ...homePx);
-      const model = this.models.create(i, voice === 'hoot');
+      const model = makeMosaicBird(rig.birds[i], target.plumage[i]);
       const mesh = model.obj;
       mesh.position.set(cx, cy, .00015);
       const effect = new PerchEffect(mesh.position, h / rig.w);
@@ -45,6 +46,7 @@ export class PerchedFlock {
     bird.mesh.visible = false;
     bird.mesh.position.copy(bird.home);
     bird.mesh.rotation.set(0, 0, 0);
+    bird.model.head?.quaternion.identity();
     bird.start = null;
     bird.airborne = false;
   }
@@ -56,7 +58,7 @@ export class PerchedFlock {
     return Boolean(bird);
   }
 
-  update(t) {
+  update(t, frameDelta, cameraPosition) {
     for (const bird of this.birds) {
       bird.effect.update(t, this.visibility);
       if (bird.start === null || t < bird.start) continue;
@@ -82,7 +84,10 @@ export class PerchedFlock {
         ? THREE.MathUtils.smootherstep(phase, .14, .25) * (1 - THREE.MathUtils.smootherstep(phase, .80, .92))
         : THREE.MathUtils.smootherstep(phase, .31, .45) * (1 - THREE.MathUtils.smootherstep(phase, .60, .73));
       const wingRate = 2 * Math.PI * bird.wingHz;
-      const wingCycle = (phase - .12) * bird.duration * wingRate;
+      // Integral of a varying cadence: quick departure, relaxed cruise, landing flare.
+      const cycles = .82*elapsed + .32*(1-Math.exp(-elapsed/.65))
+        + .16*bird.duration*phase**5;
+      const wingCycle = cycles * wingRate;
       // Ease only near the perch to keep the glide moving at cruising speed.
       const progress = phase - Math.sin(2 * angle) / (2 * Math.PI) * .85;
       bird.path.getPointAt(progress, bird.pos).add(bird.home);
@@ -102,6 +107,14 @@ export class PerchedFlock {
       const model = bird.model;
       model.model.rotation.z = THREE.MathUtils.clamp(-bend * 1.65, -.66, .66) * arc;
       model.model.rotation.x = -.24 * brake;
+      if (model.head) {
+        this.viewer.copy(cameraPosition ?? this.up).sub(bird.pos);
+        if (!cameraPosition) this.viewer.set(0,0,1);
+        this.aim.lookAt(this.viewer, this.origin, this.up);
+        this.heading.setFromRotationMatrix(this.aim);
+        this.headAim.copy(bird.mesh.quaternion).multiply(model.model.quaternion).invert().multiply(this.heading);
+        model.head.quaternion.slerp(this.headAim, -Math.expm1(-dt*5));
+      }
       bird.mesh.scale.setScalar(bird.size * Math.sqrt(opacity));
       const open = THREE.MathUtils.smootherstep(phase, 0, .095)
         * (1 - THREE.MathUtils.smootherstep(phase, .89, 1));
@@ -120,8 +133,6 @@ export class PerchedFlock {
         wing.el.rotation.y = side * ((1-open) * .52 + recovery * effort * .42);
         wing.sh.scale.x = (owl ? 1.27 : 1.06) * (.76 + .24 * open);
       }
-      model.tail.scale.x = .75 + .35 * Math.abs(bend) + .60 * brake;
-      model.tail.rotation.x = .11 + .32 * brake;
     }
   }
 }

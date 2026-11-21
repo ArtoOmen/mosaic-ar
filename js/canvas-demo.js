@@ -62,31 +62,36 @@ export class CanvasDemo {
       if (!bird.mesh.visible) continue;
       bird.mesh.traverse(part => {
         if (!part.isMesh) return;
-        const { position, aColor } = part.geometry.attributes;
-        const indices = part.geometry.index;
+        const { position, uv } = part.geometry.attributes;
+        const indices = part.geometry.userData.preview;
+        const img = part.material.map.image;
         const points = Array.from({length: position.count}, (_, i) => {
           const v = this.point.fromBufferAttribute(position, i).applyMatrix4(part.matrixWorld).project(camera);
           return [(v.x + 1) * el.width / 2, (1 - v.y) * el.height / 2, v.z];
         });
-        const count = indices?.count ?? position.count;
+        const count = indices.length;
         for (let i = 0; i < count; i += 3) {
-          const id = indices ? indices.getX(i) : i;
-          const a = points[id], b = points[indices ? indices.getX(i+1) : i+1];
-          const c = points[indices ? indices.getX(i+2) : i+2];
-          const color = aColor
-            ? `rgb(${255*aColor.getX(id)},${255*aColor.getY(id)},${255*aColor.getZ(id)})`
-            : part.material.color.getStyle();
-          faces.push({a,b,c,color,depth:a[2]+b[2]+c[2]});
+          const ids = indices.slice(i,i+3);
+          const [a,b,c] = ids.map(id=>points[id]);
+          const src = ids.map(id=>[uv.getX(id)*img.width,(1-uv.getY(id))*img.height]);
+          faces.push({a,b,c,img,src,depth:a[2]+b[2]+c[2]});
         }
       });
     }
     faces.sort((a,b) => b.depth-a.depth);
-    for (const {a,b,c,color} of faces) {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.lineTo(c[0],c[1]);
-      ctx.closePath();
-      ctx.fill();
+    for (const {a,b,c,img,src:[o,u,v]} of faces) {
+      const ux=u[0]-o[0], uy=u[1]-o[1], vx=v[0]-o[0], vy=v[1]-o[1];
+      const det=ux*vy-uy*vx;
+      if (Math.abs(det)<.001) continue;
+      const x1=b[0]-a[0], x2=c[0]-a[0], y1=b[1]-a[1], y2=c[1]-a[1];
+      const xx=(x1*vy-x2*uy)/det, xy=(x2*ux-x1*vx)/det;
+      const yx=(y1*vy-y2*uy)/det, yy=(y2*ux-y1*vx)/det;
+      ctx.save();
+      ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.lineTo(c[0],c[1]);
+      ctx.closePath(); ctx.clip();
+      ctx.setTransform(xx,yx,xy,yy,a[0]-xx*o[0]-xy*o[1],a[1]-yx*o[0]-yy*o[1]);
+      ctx.drawImage(img,0,0);
+      ctx.restore();
     }
   }
 

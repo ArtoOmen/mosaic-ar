@@ -275,40 +275,6 @@ function makeEyes() {
     };
 }
 
-export function createFlightModels() {
-  const tiles = makeTileTexture();
-  const material = makeBirdMaterial(tiles);
-  const eyes = makeEyes();
-  const geometries = SCHEMES.map(buildBirdGeometries);
-  return {
-    tiles,
-    create(index, owl) {
-      const scheme = [2, 1, 0, 3, 0, 1, 3, 0, 2][index] ?? 0;
-      const bird = new Bird(geometries[scheme], material, eyes, scheme);
-      if (owl) {
-        const face = new THREE.Mesh(new THREE.SphereGeometry(.16, 12, 8), eyes.black);
-        face.position.set(0, .11, .28);
-        face.scale.set(1.25, 1, .83);
-        bird.model.add(face);
-        for (const side of [-1, 1]) {
-          const iris = new THREE.Mesh(eyes.discGeo, eyes.yellow);
-          iris.scale.setScalar(1.75);
-          iris.position.set(side * .082, .13, .404);
-          const pupil = new THREE.Mesh(eyes.pupilGeo, eyes.black);
-          pupil.position.z = .002;
-          iris.add(pupil);
-          bird.model.add(iris);
-          const tuft = new THREE.Mesh(new THREE.ConeGeometry(.047, .11, 4), eyes.black);
-          tuft.position.set(side * .124, .26, .27);
-          tuft.rotation.z = -side * .34;
-          bird.model.add(tuft);
-        }
-      }
-      return bird;
-    }
-  };
-}
-
 export class Flock {
   constructor({ count = 5, rig, onEvent = () => {} }) {
     this.group = new THREE.Group();

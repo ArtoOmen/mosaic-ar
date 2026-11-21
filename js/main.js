@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { LivingMural } from './mural.js?v=flight6';
 import { TrackedPose } from './tracked-pose.js?v=flight6';
-import { CanvasDemo } from './canvas-demo.js?v=volume9';
-import { PerchedFlock } from './perched-flock.js?v=volume9';
+import { CanvasDemo } from './canvas-demo.js?v=plumage10';
+import { PerchedFlock } from './perched-flock.js?v=plumage10';
 import { Flock } from './flock.js';
-import { BirdSong } from './audio.js?v=flight8';
+import { BirdSong } from './audio.js?v=plumage10';
 import { loadManifest } from './rig.js?v=volume9';
 
 const $ = (s) => document.querySelector(s);
@@ -111,6 +111,20 @@ function loadAssets() {
       const [map, mask] = await Promise.all([L.loadAsync(t.dir + 'mural.jpg'), L.loadAsync(t.dir + 'mask.png')]);
       for (const x of [map, mask]) { x.colorSpace = THREE.NoColorSpace; x.anisotropy = 4; }
       Object.assign(t, { map, mask });
+      if (t.rig.birds) {
+        const photo = async file => {
+          const tex = await L.loadAsync(t.dir + file);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          return tex;
+        };
+        t.plumage = await Promise.all(t.rig.birds.map(async (bird,i) => {
+          const [body, hidden, ...wings] = await Promise.all([
+            photo(`body-${i}.png`), bird.hiddenBody ? photo(bird.hiddenBody) : null,
+            ...bird.wings.map((_,j)=>photo(`wing-${i}-${j}.png`))
+          ]);
+          return {body,hidden,wings};
+        }));
+      }
     }));
     return targets;
   })().catch((e) => { assetsP = null; throw e; });
@@ -139,7 +153,6 @@ function buildWorld(parent, target, { count, cameraOverlay = false }) {
 }
 
 function disposeWorld(world) {
-  world.flock.models?.tiles.dispose();
   for (const root of [world.mural.mesh, world.flock.group]) {
     root.parent && root.parent.remove(root);
     root.traverse((o) => {

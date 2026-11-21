@@ -208,20 +208,31 @@ export class BirdSong {
     if (!this.on || !this.active || document.hidden || this.ctx?.state !== 'running') return;
     const now = this.ctx.currentTime;
     if (this.nextNote > now + .12) return;
-    // A sparse plucked melody over alternating bass notes, under the bird calls.
-    const phrase = [62, 69, 74, 0, 71, 69, 66, 0, 67, 74, 78, 76, 71, 0, 69, 0];
-    const step = this.musicStep++ % phrase.length;
-    const t = Math.max(now + .02, this.nextNote);
-    const hz = midi => 440 * 2 ** ((midi - 69) / 12);
-    if (phrase[step]) {
-      const f = hz(phrase[step]);
-      this._note(t, f, f, 1.2, .14, .18, {vib: 0, attack: .025});
+    // Eight bars in 6/8. The answering phrase changes register over the same pulse.
+    const bars = [
+      [50,57,66, 74,0,69,73,74,0], [47,54,62, 78,76,74,71,0,69],
+      [43,50,59, 67,0,71,74,0,78], [45,52,61, 76,73,0,69,0,0],
+      [50,57,66, 78,0,81,83,81,78], [42,49,57, 76,74,73,69,0,66],
+      [43,50,59, 71,74,78,79,0,76], [45,52,61, 73,69,0,74,0,0]
+    ];
+    const beat = this.musicStep++ % 48;
+    const bar = bars[Math.floor(beat/6)], pulse = beat%6;
+    const t = Math.max(now+.02,this.nextNote);
+    const hz = midi => 440 * 2 ** ((midi-69)/12);
+    const melody = bar[3+pulse];
+    if (melody) {
+      const f = hz(melody);
+      this._note(t,f,f,1.02,.12,.16,{vib:.002,vibHz:4,attack:.025});
+      if (pulse === 0 || pulse === 3) this._note(t+.014,2*f,2*f,.42,.031,.23,{vib:0,attack:.012});
     }
-    if (step % 4 === 0) {
-      const bass = hz([50, 47, 43, 45][step / 4]);
-      this._note(t, bass, bass, 2.3, .16, -.15, {vib: 0, attack: .12});
+    if (pulse === 0 || pulse === 3) {
+      const bass = hz(bar[pulse === 0 ? 0 : 1]);
+      this._note(t,bass,bass,1.35,.135,-.18,{vib:0,attack:.13});
+    } else {
+      const pluck = hz(bar[pulse%2 ? 1 : 2]+12);
+      this._note(t+.018,pluck,pluck,.54,.065,-.34,{vib:0,attack:.012});
     }
-    this.nextNote = t + .48;
+    this.nextNote = t + .31;
   }
 
   ambient(hasOwl) {
