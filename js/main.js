@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { LivingMural } from './mural.js?v=flight6';
 import { TrackedPose } from './tracked-pose.js?v=flight6';
 import { CanvasDemo } from './canvas-demo.js?v=flight6';
-import { PerchedFlock } from './perched-flock.js?v=flight6';
+import { PerchedFlock } from './perched-flock.js?v=routes7';
 import { Flock } from './flock.js';
 import { BirdSong } from './audio.js';
-import { loadManifest } from './rig.js?v=wing5';
+import { loadManifest } from './rig.js?v=routes7';
 
 const $ = (s) => document.querySelector(s);
 const qs = new URLSearchParams(location.search);

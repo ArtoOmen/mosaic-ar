@@ -6,7 +6,7 @@ export class PerchedFlock {
     this.group = new THREE.Group();
     this.onEvent = onEvent;
     this.visibility = 1;
-    this.birds = target.rig.birds.map(({ rect, direction, voice }, i) => {
+    this.birds = target.rig.birds.map(({ rect, direction, voice, flight }, i) => {
       const [x, y, w, h] = rect;
       const rig = target.rig;
       const homePx = [x + w / 2, y + h / 2];
@@ -41,8 +41,12 @@ export class PerchedFlock {
         mesh.add(body);
       }
       this.group.add(mesh);
+      const points = flight?.points ?? [[direction * .14, .13, .14], [direction * .22, .07, .18], [direction * .12, .02, .08]];
+      const path = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(), ...points.map(point => new THREE.Vector3(...point))
+      ], true);
       return { mesh, body, pos: mesh.position, home: mesh.position.clone(), rect, homePx, voice, direction,
-        wings, parts, folded: target.sprites[i], start: null, airborne: false, duration: voice === "hoot" ? 6.6 : 4.9 + (i % 4) * .32 };
+        wings, parts, folded: target.sprites[i], start: null, airborne: false, path, tangent: new THREE.Vector3(), duration: flight?.duration ?? 5 };
     });
   }
 
@@ -92,24 +96,18 @@ export class PerchedFlock {
       bird.mesh.material.opacity = opacity;
       if (bird.body) bird.body.material.opacity = opacity * Math.min(1, arc * 7);
       const owl = bird.voice === 'hoot';
-      const inward = bird.home.x > 0 ? -1 : 1;
-      const sweep = Math.sin(2 * angle);
-      const turn = Math.cos(2 * angle);
-      const glide = THREE.MathUtils.smootherstep(phase, .31, .45)
-        * (1 - THREE.MathUtils.smootherstep(phase, .60, .73));
-      // Offset the outbound and return legs in height and depth.
-      const width = owl ? .38 : .21 + .035 * (i % 4);
-      const rise = bird.home.y > .23 ? .055 : .16 + .03 * (i % 3);
-      const wingRate = owl ? 6.4 : 7.6 + .5 * (i % 3);
+      const glide = owl
+        ? THREE.MathUtils.smootherstep(phase, .14, .25) * (1 - THREE.MathUtils.smootherstep(phase, .80, .92))
+        : THREE.MathUtils.smootherstep(phase, .31, .45) * (1 - THREE.MathUtils.smootherstep(phase, .60, .73));
+      const wingRate = owl ? 5 : 7.6 + .5 * (i % 3);
       const wingCycle = (phase - .12) * bird.duration * wingRate;
-      const lift = .009 * Math.sin(wingCycle) * (1 - glide);
-      bird.pos.set(
-        bird.home.x + inward * arc * (width + .13 * sweep),
-        bird.home.y + arc * (rise + .09 * sweep + lift),
-        bird.home.z + arc * (.22 + .075 * turn)
-      );
-      bird.mesh.rotation.set(arc * (.08 - .15 * sweep),
-        inward * arc * (.34 + .36 * sweep), inward * arc * (.12 + .38 * sweep));
+      // Ease only near the perch to keep the glide moving at cruising speed.
+      const progress = phase - Math.sin(2 * angle) / (2 * Math.PI) * .85;
+      bird.path.getPointAt(progress, bird.pos).add(bird.home);
+      bird.path.getTangentAt(progress, bird.tangent);
+      bird.pos.y += arc * .006 * Math.sin(wingCycle) * (1 - glide);
+      bird.mesh.rotation.set(-arc * .16 * bird.tangent.z, arc * .30 * bird.tangent.x,
+        arc * (.23 * bird.tangent.x + .12 * bird.direction * bird.tangent.y));
       if (bird.parts) bird.mesh.material.map = bird.parts.body;
       // Open before lift-off, beat in flight, then hold a braking pose and tuck.
       const open = THREE.MathUtils.smootherstep(phase, 0, .12);
