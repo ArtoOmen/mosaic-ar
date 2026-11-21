@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { LivingMural } from './mural.js?v=flight6';
 import { TrackedPose } from './tracked-pose.js?v=flight6';
-import { CanvasDemo } from './canvas-demo.js?v=plumage10';
-import { PerchedFlock } from './perched-flock.js?v=plumage10';
+import { CanvasDemo } from './canvas-demo.js?v=kiln11';
+import { PerchedFlock } from './perched-flock.js?v=kiln11';
 import { Flock } from './flock.js';
 import { BirdSong } from './audio.js?v=plumage10';
 import { loadManifest } from './rig.js?v=volume9';
@@ -102,29 +102,23 @@ function setLoading(text) { $('#loadingText').textContent = text; show('#loading
 
 // ---------------------------------------------------------------- shared world
 const song = new BirdSong();
-let assetsP = null;
+let manifestP, assetsP;
+function sceneManifest() {
+  manifestP ??= loadManifest().catch(error => { manifestP = null; throw error; });
+  return manifestP;
+}
 function loadAssets() {
   assetsP = assetsP || (async () => {
-    const targets = await loadManifest();
+    const targets = await sceneManifest();
     const L = new THREE.TextureLoader();
     await Promise.all(targets.map(async (t) => {
-      const [map, mask] = await Promise.all([L.loadAsync(t.dir + 'mural.jpg'), L.loadAsync(t.dir + 'mask.png')]);
+      const [map, mask, plumage] = await Promise.all([
+        L.loadAsync(t.dir + 'mural.jpg'), L.loadAsync(t.dir + 'mask.png'),
+        t.rig.birds ? L.loadAsync(t.dir + 'plumage.webp') : null
+      ]);
       for (const x of [map, mask]) { x.colorSpace = THREE.NoColorSpace; x.anisotropy = 4; }
-      Object.assign(t, { map, mask });
-      if (t.rig.birds) {
-        const photo = async file => {
-          const tex = await L.loadAsync(t.dir + file);
-          tex.colorSpace = THREE.SRGBColorSpace;
-          return tex;
-        };
-        t.plumage = await Promise.all(t.rig.birds.map(async (bird,i) => {
-          const [body, hidden, ...wings] = await Promise.all([
-            photo(`body-${i}.png`), bird.hiddenBody ? photo(bird.hiddenBody) : null,
-            ...bird.wings.map((_,j)=>photo(`wing-${i}-${j}.png`))
-          ]);
-          return {body,hidden,wings};
-        }));
-      }
+      if (plumage) plumage.colorSpace = THREE.SRGBColorSpace;
+      Object.assign(t, {map, mask, plumage});
     }));
     return targets;
   })().catch((e) => { assetsP = null; throw e; });
@@ -563,7 +557,7 @@ async function startDemo(which = standIndex) {
 // Desktop test stand: pick which mosaic is shown on the big picture (and in the demo)
 let standIndex = 0;
 async function setupStand() {
-  const targets = await loadManifest();
+  const targets = await sceneManifest();
   const byParam = targets.findIndex((t) => t.id === qs.get('t'));
   const tabs = $('#standTabs');
   const select = (i) => {

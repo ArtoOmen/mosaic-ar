@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeMosaicBird } from './mosaic-bird.js';
+import { makeMosaicBird } from './mosaic-bird.js?v=kiln11';
 import { PerchEffect } from './perch-effect.js';
 import { px2local } from './rig.js';
 
@@ -20,7 +20,7 @@ export class PerchedFlock {
       const rig = target.rig;
       const homePx = [x + w / 2, y + h / 2];
       const [cx, cy] = px2local(rig, ...homePx);
-      const model = makeMosaicBird(rig.birds[i], target.plumage[i]);
+      const model = makeMosaicBird(rig.birds[i], target.plumage, i);
       const mesh = model.obj;
       mesh.position.set(cx, cy, .00015);
       const effect = new PerchEffect(mesh.position, h / rig.w);
@@ -131,7 +131,8 @@ export class PerchedFlock {
         wing.el.rotation.z = side * wrist;
         wing.sh.rotation.y = side * ((1-open) * 1.15 + recovery * effort * .20);
         wing.el.rotation.y = side * ((1-open) * .52 + recovery * effort * .42);
-        wing.sh.scale.x = (owl ? 1.27 : 1.06) * (.76 + .24 * open);
+        wing.sh.scale.x = (owl ? 1.13 : 1.04) * (.76 + .24 * open);
+        wing.bend();
       }
     }
   }

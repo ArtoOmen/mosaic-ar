@@ -64,7 +64,7 @@ export class CanvasDemo {
         if (!part.isMesh) return;
         const { position, uv } = part.geometry.attributes;
         const indices = part.geometry.userData.preview;
-        const img = part.material.map.image;
+        const img = part.material.map?.image;
         const points = Array.from({length: position.count}, (_, i) => {
           const v = this.point.fromBufferAttribute(position, i).applyMatrix4(part.matrixWorld).project(camera);
           return [(v.x + 1) * el.width / 2, (1 - v.y) * el.height / 2, v.z];
@@ -73,13 +73,24 @@ export class CanvasDemo {
         for (let i = 0; i < count; i += 3) {
           const ids = indices.slice(i,i+3);
           const [a,b,c] = ids.map(id=>points[id]);
+          if (!img) {
+            const tint = new THREE.Color().fromBufferAttribute(part.geometry.attributes.color,ids[0]);
+            faces.push({a,b,c,tint:tint.getStyle(),depth:a[2]+b[2]+c[2]});
+            continue;
+          }
           const src = ids.map(id=>[uv.getX(id)*img.width,(1-uv.getY(id))*img.height]);
           faces.push({a,b,c,img,src,depth:a[2]+b[2]+c[2]});
         }
       });
     }
     faces.sort((a,b) => b.depth-a.depth);
-    for (const {a,b,c,img,src:[o,u,v]} of faces) {
+    for (const {a,b,c,img,src,tint} of faces) {
+      if (tint) {
+        ctx.fillStyle=tint;ctx.beginPath();ctx.moveTo(...a.slice(0,2));
+        ctx.lineTo(...b.slice(0,2));ctx.lineTo(...c.slice(0,2));ctx.closePath();ctx.fill();
+        continue;
+      }
+      const [o,u,v]=src;
       const ux=u[0]-o[0], uy=u[1]-o[1], vx=v[0]-o[0], vy=v[1]-o[1];
       const det=ux*vy-uy*vx;
       if (Math.abs(det)<.001) continue;
