@@ -50,6 +50,12 @@ export class CanvasDemo {
     };
     draw(world.mural.mesh,map.image,1,rig.h/rig.w);
     const ordered = [...world.flock.birds].sort((a, b) => a.pos.z - b.pos.z);
+    for (const { effect } of ordered) {
+      if (!effect.mesh.visible) continue;
+      ctx.globalAlpha = effect.mesh.material.opacity;
+      draw(effect.mesh, effect.texture.image, effect.size, effect.size);
+    }
+    ctx.globalAlpha = 1;
     for (const bird of ordered) {
       if (!bird.mesh.visible) continue;
       const w = bird.rect[2]/rig.w, h = bird.rect[3]/rig.w;
@@ -59,9 +65,15 @@ export class CanvasDemo {
         ctx.globalAlpha = 1;
       }
       ctx.globalAlpha = bird.mesh.material.opacity;
+      for (const wing of bird.wings) {
+        if (!wing.far || !wing.joint.visible) continue;
+        ctx.globalAlpha = wing.feather.material.opacity;
+        draw(wing.feather, wing.feather.material.map.image, w, h);
+      }
+      ctx.globalAlpha = bird.mesh.material.opacity;
       draw(bird.mesh, bird.mesh.material.map.image, w, h);
-      for (const { joint, feather } of bird.wings) {
-        if (joint.visible) draw(feather, feather.material.map.image, w, h);
+      for (const { joint, feather, far } of bird.wings) {
+        if (!far && joint.visible) draw(feather, feather.material.map.image, w, h);
       }
       ctx.globalAlpha = 1;
     }

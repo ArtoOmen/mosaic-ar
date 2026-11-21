@@ -8,6 +8,8 @@ export class BirdSong {
     this.ctx = null;
     this.on = true;
     this.active = false;
+    this.musicStep = 0;
+    this.nextNote = 0;
   }
 
   // Must be called from a user gesture (tap) — iOS only allows audio after one.
@@ -54,7 +56,7 @@ export class BirdSong {
       s.connect(ctx.destination);
       s.start(0);
     }
-    if (this.ctx.state !== 'running') this.ctx.resume();
+    if (this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
   }
 
   setOn(v) {
@@ -200,6 +202,26 @@ export class BirdSong {
         [784, 988, 1175, 1568].forEach((f, i) => this._note(t + i * 0.1, f, f * 1.001, 1.2, vol * 0.5, (i - 1.5) * 0.25, { vib: 0.004, vibHz: 5, attack: 0.05 }));
         break;
     }
+  }
+
+  music() {
+    if (!this.on || !this.active || document.hidden || this.ctx?.state !== 'running') return;
+    const now = this.ctx.currentTime;
+    if (this.nextNote > now + .12) return;
+    // A sparse plucked melody over alternating bass notes, under the bird calls.
+    const phrase = [62, 69, 74, 0, 71, 69, 66, 0, 67, 74, 78, 76, 71, 0, 69, 0];
+    const step = this.musicStep++ % phrase.length;
+    const t = Math.max(now + .02, this.nextNote);
+    const hz = midi => 440 * 2 ** ((midi - 69) / 12);
+    if (phrase[step]) {
+      const f = hz(phrase[step]);
+      this._note(t, f, f, 1.2, .14, .18, {vib: 0, attack: .025});
+    }
+    if (step % 4 === 0) {
+      const bass = hz([50, 47, 43, 45][step / 4]);
+      this._note(t, bass, bass, 2.3, .16, -.15, {vib: 0, attack: .12});
+    }
+    this.nextNote = t + .48;
   }
 
   ambient(hasOwl) {

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { PerchEffect } from './perch-effect.js';
 import { px2local } from './rig.js';
 
 export class PerchedFlock {
@@ -12,7 +13,7 @@ export class PerchedFlock {
       const homePx = [x + w / 2, y + h / 2];
       const [cx, cy] = px2local(rig, ...homePx);
       const geometry = new THREE.PlaneGeometry(w / rig.w, h / rig.w);
-      const material = new THREE.MeshBasicMaterial({ map: target.sprites[i], transparent: true, depthTest: false, depthWrite: false, toneMapped: false });
+      const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, map: target.sprites[i], transparent: true, depthTest: false, depthWrite: false, toneMapped: false });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.set(cx, cy, .00015);
       mesh.renderOrder = 3;
@@ -31,10 +32,26 @@ export class PerchedFlock {
         mesh.add(joint);
         return { joint, feather, direction };
       });
+      // The profile cutout has one visible wing. Reveal its far counterpart in the close pass.
+      if (flight?.name === 'camera' && wings.length === 1) {
+        const near = wings[0];
+        const shoulder = new THREE.Group();
+        shoulder.scale.x = -1;
+        shoulder.position.x = near.joint.position.x * 2;
+        const joint = near.joint.clone(true);
+        const feather = joint.children[0];
+        feather.material = near.feather.material.clone();
+        feather.renderOrder = 2;
+        shoulder.add(joint);
+        mesh.add(shoulder);
+        wings.push({ joint, feather, direction: near.direction, far: true });
+      }
+      const effect = new PerchEffect(mesh.position, h / rig.w);
+      this.group.add(effect.mesh);
       let body;
       if (target.hiddenBodies[i]) {
         body = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
-          map: target.hiddenBodies[i], transparent: true, opacity: 0, depthTest: false, depthWrite: false
+          side: THREE.DoubleSide, map: target.hiddenBodies[i], transparent: true, opacity: 0, depthTest: false, depthWrite: false
         }));
         body.position.z = -.00004;
         body.renderOrder = 2;
@@ -46,7 +63,7 @@ export class PerchedFlock {
         new THREE.Vector3(), ...points.map(point => new THREE.Vector3(...point))
       ], true);
       return { mesh, body, pos: mesh.position, home: mesh.position.clone(), rect, homePx, voice, direction,
-        wings, parts, folded: target.sprites[i], start: null, airborne: false, path, tangent: new THREE.Vector3(), duration: flight?.duration ?? 5 };
+        effect, wings, parts, wingHz: [2.3, 1.55, .72, 2.7, 1.9, 1.35, 2.05, 1.75, 3.25][i] ?? 1.8, folded: target.sprites[i], start: null, airborne: false, path, tangent: new THREE.Vector3(), duration: flight?.duration ?? 5 };
     });
   }
 
@@ -55,7 +72,7 @@ export class PerchedFlock {
   }
 
   stop() {
-    for (const bird of this.birds) this.land(bird);
+    for (const bird of this.birds) { this.land(bird); bird.effect.mesh.visible = false; }
   }
 
   land(bird) {
@@ -78,14 +95,18 @@ export class PerchedFlock {
 
   update(t) {
     for (const [i, bird] of this.birds.entries()) {
+      bird.effect.update(t, this.visibility);
       if (bird.start === null || t < bird.start) continue;
       const elapsed = t - bird.start, phase = elapsed / bird.duration;
       if (phase >= 1) {
-        if (bird.airborne) this.onEvent('merge', bird);
+        if (bird.airborne) { bird.effect.start(t, true); this.onEvent('merge', bird); }
         this.land(bird);
         continue;
       }
       if (!bird.airborne) {
+        bird.effect.start(t, false);
+        bird.lastTime = t;
+        bird.yaw = 0;
         this.onEvent('emerge', bird);
         bird.airborne = true;
       }
@@ -99,15 +120,25 @@ export class PerchedFlock {
       const glide = owl
         ? THREE.MathUtils.smootherstep(phase, .14, .25) * (1 - THREE.MathUtils.smootherstep(phase, .80, .92))
         : THREE.MathUtils.smootherstep(phase, .31, .45) * (1 - THREE.MathUtils.smootherstep(phase, .60, .73));
-      const wingRate = owl ? 5 : 7.6 + .5 * (i % 3);
+      const wingRate = 2 * Math.PI * bird.wingHz;
       const wingCycle = (phase - .12) * bird.duration * wingRate;
       // Ease only near the perch to keep the glide moving at cruising speed.
       const progress = phase - Math.sin(2 * angle) / (2 * Math.PI) * .85;
       bird.path.getPointAt(progress, bird.pos).add(bird.home);
       bird.path.getTangentAt(progress, bird.tangent);
       bird.pos.y += arc * .006 * Math.sin(wingCycle) * (1 - glide);
-      bird.mesh.rotation.set(-arc * .16 * bird.tangent.z, arc * .30 * bird.tangent.x,
-        arc * (.23 * bird.tangent.x + .12 * bird.direction * bird.tangent.y));
+      const close = THREE.MathUtils.smootherstep(bird.pos.z - bird.home.z, .20, .46);
+      const along = bird.direction * bird.tangent.x;
+      const turn = THREE.MathUtils.smootherstep(-along, -.18, .18);
+      const blend = 1 - Math.exp(-9 * Math.max(0, t - bird.lastTime));
+      bird.lastTime = t;
+      bird.yaw += (turn * Math.PI - bird.yaw) * blend;
+      const orient = Math.min(THREE.MathUtils.smoothstep(phase, 0, .14),
+        1 - THREE.MathUtils.smoothstep(phase, .84, 1));
+      const pitch = Math.atan2(bird.tangent.y, Math.hypot(bird.tangent.x, bird.tangent.z));
+      bird.mesh.rotation.order = 'ZYX';
+      bird.mesh.rotation.set(-.16 * orient * bird.tangent.z, orient * bird.yaw,
+        orient * pitch * bird.direction * Math.cos(bird.yaw) * .82);
       if (bird.parts) bird.mesh.material.map = bird.parts.body;
       // Open before lift-off, beat in flight, then hold a braking pose and tuck.
       const open = THREE.MathUtils.smootherstep(phase, 0, .12);
@@ -116,10 +147,11 @@ export class PerchedFlock {
       const beating = THREE.MathUtils.smoothstep(phase, .12, .21)
         * (1 - THREE.MathUtils.smoothstep(phase, .63, .77));
       const spread = open * tuck * (1 - .62 * beating * stroke * (1 - glide));
-      for (const { joint, feather, direction } of bird.wings) {
-        joint.visible = true;
-        joint.rotation.set(.28 * spread, direction * .22 * spread, -direction * 1.78 * spread);
-        feather.material.opacity = opacity;
+      for (const { joint, feather, direction, far } of bird.wings) {
+        joint.visible = !far || close > .01;
+        joint.scale.setScalar(1 + .37 * close * spread);
+        joint.rotation.set(.28 * spread, direction * .22 * spread, -direction * (1.78 - .74 * close) * spread);
+        feather.material.opacity = opacity * (far ? close : 1);
       }
     }
   }

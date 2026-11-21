@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { LivingMural } from './mural.js?v=flight6';
 import { TrackedPose } from './tracked-pose.js?v=flight6';
-import { CanvasDemo } from './canvas-demo.js?v=flight6';
-import { PerchedFlock } from './perched-flock.js?v=routes7';
+import { CanvasDemo } from './canvas-demo.js?v=flight8';
+import { PerchedFlock } from './perched-flock.js?v=flight8';
 import { Flock } from './flock.js';
-import { BirdSong } from './audio.js';
+import { BirdSong } from './audio.js?v=flight8';
 import { loadManifest } from './rig.js?v=routes7';
 
 const $ = (s) => document.querySelector(s);
@@ -136,11 +136,12 @@ function buildWorld(parent, target, { count, cameraOverlay = false }) {
   function onEvent(type, b) {
       const pan = Math.max(-1, Math.min(1, b.pos.x * 1.8));
       if (type === 'emerge') {
-        song.play('flutter', pan, 0.06);
-        song.play(b.voice || 'tweet', pan, 0.075, 0.12);
+        song.play('flutter', pan, 0.18);
+        song.play(b.voice || 'tweet', pan, 0.13, 0.12);
         mural.pulse(b.homePx[0], b.homePx[1], 85);
       } else if (type === 'merge') {
-        song.play('flutter', pan, 0.05);
+        song.play('flutter', pan, 0.12);
+        song.play('magic', pan, .07);
         mural.pulse(b.homePx[0], b.homePx[1], 65);
       }
   }
@@ -375,6 +376,7 @@ class ARSession {
       }
     }
     if (this.tracking && t > this.nextChirp) { song.ambient(true); this.nextChirp = t + rand(2.8, 6.5); }
+    song.music();
     this.mindar.renderer.render(this.mindar.scene, this.mindar.camera);
   }
 
@@ -501,6 +503,7 @@ class DemoSession {
     this.world.mural.update(t, dt, this.camera.position);
     this.world.flock.update(t, dt, this.camera.position);
     if (t > this.nextChirp) { song.ambient(true); this.nextChirp = t + rand(3, 7); }
+    song.music();
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -540,6 +543,8 @@ function showError(err) {
 
 async function run(Kind, ...args) {
   song.unlock();
+  if (song.ctx) song.ctx.onstatechange = syncSoundButton;
+  syncSoundButton();
   if (session) { session.stop(); session = null; }
   const s = new Kind(...args);
   try {
@@ -588,11 +593,21 @@ $('#btnRetry').addEventListener('click', () => run(ARSession));
 $('#btnErrDemo').addEventListener('click', () => startDemo());
 $('#btnClose').addEventListener('click', closeSession);
 $('#btnSwitch').addEventListener('click', () => { if (session instanceof DemoSession) session.next(); });
+function syncSoundButton() {
+  const playing = song.on && song.ctx?.state === 'running';
+  const button = $('#btnSound');
+  button.classList.toggle('muted', !playing);
+  button.setAttribute('aria-pressed', String(Boolean(playing)));
+  const label = playing ? T.sound : (lang === 'ru' ? 'Включить звук' : 'Enable sound');
+  button.setAttribute('aria-label', label);
+  $('#soundLabel').textContent = playing ? '' : label;
+}
+syncSoundButton();
 $('#btnSound').addEventListener('click', () => {
-  song.unlock();
-  const on = !$('#btnSound').classList.toggle('muted');
-  song.setOn(on);
-  $('#btnSound').setAttribute('aria-pressed', String(on));
+  const enable = !(song.on && song.ctx?.state === 'running');
+  song.setOn(enable);
+  if (enable) song.unlock();
+  syncSoundButton();
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { song.scene(false); song.suspend(); return; }
