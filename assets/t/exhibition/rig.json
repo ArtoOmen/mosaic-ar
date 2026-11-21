@@ -12,7 +12,16 @@
         222
       ],
       "voice": "tweet",
-      "direction": 1
+      "direction": 1,
+      "wings": [
+        {
+          "pivot": [
+            97,
+            93
+          ],
+          "direction": 1
+        }
+      ]
     },
     {
       "rect": [
@@ -22,7 +31,16 @@
         322
       ],
       "voice": "warble",
-      "direction": 1
+      "direction": 1,
+      "wings": [
+        {
+          "pivot": [
+            163,
+            101
+          ],
+          "direction": 1
+        }
+      ]
     },
     {
       "rect": [
@@ -32,7 +50,23 @@
         320
       ],
       "voice": "hoot",
-      "direction": -1
+      "direction": -1,
+      "wings": [
+        {
+          "pivot": [
+            80,
+            147
+          ],
+          "direction": 1
+        },
+        {
+          "pivot": [
+            206,
+            147
+          ],
+          "direction": -1
+        }
+      ]
     },
     {
       "rect": [
@@ -42,7 +76,16 @@
         347
       ],
       "voice": "whistle",
-      "direction": 1
+      "direction": 1,
+      "wings": [
+        {
+          "pivot": [
+            173,
+            65
+          ],
+          "direction": 1
+        }
+      ]
     },
     {
       "rect": [
@@ -52,7 +95,16 @@
         216
       ],
       "voice": "tweet",
-      "direction": -1
+      "direction": -1,
+      "wings": [
+        {
+          "pivot": [
+            169,
+            81
+          ],
+          "direction": 1
+        }
+      ]
     },
     {
       "rect": [
@@ -62,7 +114,16 @@
         301
       ],
       "voice": "whistle",
-      "direction": -1
+      "direction": -1,
+      "wings": [
+        {
+          "pivot": [
+            114,
+            92
+          ],
+          "direction": -1
+        }
+      ]
     },
     {
       "rect": [
@@ -72,7 +133,16 @@
         353
       ],
       "voice": "warble",
-      "direction": 1
+      "direction": 1,
+      "wings": [
+        {
+          "pivot": [
+            210,
+            132
+          ],
+          "direction": 1
+        }
+      ]
     },
     {
       "rect": [
@@ -82,7 +152,16 @@
         244
       ],
       "voice": "tweet",
-      "direction": -1
+      "direction": -1,
+      "wings": [
+        {
+          "pivot": [
+            119,
+            80
+          ],
+          "direction": -1
+        }
+      ]
     },
     {
       "rect": [
@@ -93,7 +172,16 @@
       ],
       "direction": 1,
       "voice": "tweet",
-      "hiddenBody": "chick-body.png"
+      "hiddenBody": "chick-body.png",
+      "wings": [
+        {
+          "pivot": [
+            103,
+            51
+          ],
+          "direction": 1
+        }
+      ]
     }
   ]
 }

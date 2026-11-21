@@ -53,11 +53,11 @@
   let manifest = [];
   try {
     manifest = (await (await fetch('../assets/targets.json')).json()).targets;
-    $('#thumbs').innerHTML = manifest.map((t, i) => `<figure><img src="../assets/t/${t.id}/mural.jpg" alt="">${i}: ${t.title}</figure>`).join('');
+    $('#thumbs').innerHTML = manifest.map((t, i) => `<figure><img src="../assets/t/${t.id}/${t.trackingImage || 'mural.jpg'}" alt="">${i}: ${t.title}</figure>`).join('');
     $('#all').disabled = false;
   } catch (e) { log('Не удалось прочитать assets/targets.json — выберите файлы вручную.'); }
 
-  $('#all').onclick = async () => compile(await Promise.all(manifest.map((t) => loadImg(`../assets/t/${t.id}/mural.jpg`))));
+  $('#all').onclick = async () => compile(await Promise.all(manifest.map((t) => loadImg(`../assets/t/${t.id}/${t.trackingImage || 'mural.jpg'}`))));
   $('#pick').onclick = () => $('#file').click();
   $('#file').onchange = async (e) => {
     const files = [...e.target.files];

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { LivingMural } from './mural.js?v=exhibition2';
 import { TrackedPose } from './tracked-pose.js';
-import { CanvasDemo } from './canvas-demo.js';
-import { PerchedFlock } from './perched-flock.js?v=flight3';
+import { CanvasDemo } from './canvas-demo.js?v=panel4';
+import { PerchedFlock } from './perched-flock.js?v=panel4';
 import { Flock } from './flock.js';
 import { BirdSong } from './audio.js';
 import { loadManifest } from './rig.js?v=exhibition2';
@@ -114,6 +114,15 @@ function loadAssets() {
       if (t.rig.birds) {
         t.sprites = await Promise.all(t.rig.birds.map((_, i) => L.loadAsync(t.dir + 'bird-' + i + '.png')));
         t.hiddenBodies = await Promise.all(t.rig.birds.map(bird => bird.hiddenBody ? L.loadAsync(t.dir + bird.hiddenBody) : null));
+        t.flightParts = await Promise.all(t.rig.birds.map(async (bird, i) => {
+          if (!bird.wings) return null;
+          const [body, ...wings] = await Promise.all([
+            L.loadAsync(t.dir + `body-${i}.png`),
+            ...bird.wings.map((_, j) => L.loadAsync(t.dir + `wing-${i}-${j}.png`))
+          ]);
+          for (const map of [body, ...wings]) map.colorSpace = THREE.SRGBColorSpace;
+          return { body, wings };
+        }));
         for (const sprite of [...t.sprites, ...t.hiddenBodies].filter(Boolean)) sprite.colorSpace = THREE.SRGBColorSpace;
       }
     }));
