@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { LivingMural } from './mural.js?v=exhibition2';
+import { TrackedPose } from './tracked-pose.js';
 import { CanvasDemo } from './canvas-demo.js';
-import { PerchedFlock } from './perched-flock.js';
+import { PerchedFlock } from './perched-flock.js?v=flight3';
 import { Flock } from './flock.js';
 import { BirdSong } from './audio.js';
 import { loadManifest } from './rig.js?v=exhibition2';
@@ -134,7 +135,8 @@ function buildWorld(parent, target, { count, cameraOverlay = false }) {
         mural.pulse(b.homePx[0], b.homePx[1], 65);
       }
   }
-  const flock = target.rig.birds ? new PerchedFlock(target, onEvent) : new Flock({ count, rig: target.rig, onEvent });
+  const flock = target.rig.birds ? new PerchedFlock(target, onEvent, cameraOverlay) : new Flock({ count, rig: target.rig, onEvent });
+  if (cameraOverlay && target.rig.birds) mural.mesh.visible = false;
   parent.add(mural.mesh);
   parent.add(flock.group);
   return { mural, flock, target };
@@ -145,6 +147,7 @@ function disposeWorld(world) {
     root.parent && root.parent.remove(root);
     root.traverse((o) => {
       if (o.geometry) o.geometry.dispose();
+      if (o.material?.map?.isCanvasTexture) o.material.map.dispose();
       if (o.material) o.material.dispose();
     });
   }
@@ -230,7 +233,7 @@ class ARSession {
       maxTrack: 1,
       uiLoading: 'no', uiScanning: 'no', uiError: 'no',
       filterMinCF: qs.has('cf') ? +qs.get('cf') : 0.001,
-      filterBeta: qs.has('beta') ? +qs.get('beta') : 100,
+      filterBeta: qs.has('beta') ? +qs.get('beta') : 8,
       warmupTolerance: 3,
       missTolerance: 8,
     });
@@ -254,6 +257,7 @@ class ARSession {
     };
     mindar.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.clock = new THREE.Clock();
+    this.playTime = 0;
     this.inv = new THREE.Matrix4();
     this.cam = new THREE.Vector3(0, 0, 1.5);
     this.tracking = false;
@@ -262,11 +266,14 @@ class ARSession {
     // one anchor + one living world per picture; MindAR reports whichever it sees
     this.entries = targets.map((target) => {
       const anchor = mindar.addAnchor(target.index);
-      const world = buildWorld(anchor.group, target, { count: 5, cameraOverlay: true });
+      const pose = new TrackedPose();
+      mindar.scene.add(pose.root);
+      const world = buildWorld(pose.root, target, { count: 5, cameraOverlay: true });
       if (qs.has('debug')) world.mural.uniforms.uOpacity.value = 0.5;   // see-through: shows alignment
-      const e = { anchor, world, awake: false, lostAt: -1e9 };
+      const e = { anchor, world, pose, opacity: 0, awake: false, lostAt: -1e9 };
       anchor.onTargetFound = () => this.found(e);
       anchor.onTargetLost = () => this.lost(e);
+      anchor.onTargetUpdate = () => { if (anchor.group.visible) pose.accept(anchor.group.matrix); };
       return e;
     });
     // MindAR swallows some async failures (e.g. a missing target file), so guard with a timeout
@@ -297,7 +304,7 @@ class ARSession {
     this.scanPics = startScanSlideshow(targets);
     keepAwake(true);
 
-    this.onTap = (ev) => { if (this.tracking && this.current) tapWorld(ev, mindar.camera, this.current.world, this.clock.elapsedTime); };
+    this.onTap = (ev) => { if (this.tracking && this.current) tapWorld(ev, mindar.camera, this.current.world, this.playTime); };
     container.addEventListener('pointerdown', this.onTap);
     mindar.renderer.setAnimationLoop(() => this.frame());
     window.__mosaic = this; // handy for debugging
@@ -318,8 +325,8 @@ class ARSession {
     if (!e.awake || t - e.lostAt > 8) {
       mural.sleep();
       flock.stop();
-      mural.awaken(t);
-      flock.start(t);
+      mural.awaken(this.playTime);
+      flock.start(this.playTime);
       e.awake = true;
       this.nextChirp = t + 2.5;
       toast(T.awake);
@@ -341,14 +348,22 @@ class ARSession {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const t = this.clock.elapsedTime;
     const e = this.current;
-    if (e && this.tracking) {
-      const g = e.anchor.group;
-      if (this.tracking && g.visible) {
-        this.inv.copy(g.matrix).invert();
-        this.cam.set(0, 0, 0).applyMatrix4(this.inv);
+    if (e && e.pose.ready) {
+      const sinceLost = this.tracking ? 0 : t - e.lostAt;
+      const visible = sinceLost < .48;
+      e.pose.root.visible = visible;
+      if (visible) {
+        e.pose.update(dt);
+        this.playTime += dt;
+        const targetOpacity = 1 - THREE.MathUtils.smoothstep(sinceLost, .14, .48);
+        e.opacity = Math.min(targetOpacity, e.opacity + dt * 4);
+        e.world.flock.visibility = e.opacity;
+        e.world.flock.update(this.playTime, dt, this.cam);
+      } else {
+        e.opacity = 0;
+        e.pose.ready = false;
+        e.pose.votes = 0;
       }
-      e.world.mural.update(t, dt, this.cam);
-      e.world.flock.update(t, dt, this.cam);
     }
     if (this.tracking && t > this.nextChirp) { song.ambient(true); this.nextChirp = t + rand(2.8, 6.5); }
     this.mindar.renderer.render(this.mindar.scene, this.mindar.camera);
@@ -418,6 +433,7 @@ class DemoSession {
     scene.add(this.root);
     this.renderer = renderer; this.scene = scene; this.camera = camera;
     this.clock = new THREE.Clock();
+    this.playTime = 0;
     this.look = new THREE.Vector2();
     this.lookT = new THREE.Vector2();
     this.nextChirp = 1.5;
@@ -446,7 +462,7 @@ class DemoSession {
       this.lookT.set(Math.max(-1, Math.min(1, (e.gamma - this.base.g) / 25)), Math.max(-1, Math.min(1, (e.beta - this.base.b) / 25)));
       this.gyro = true;
     };
-    this.onTap = (ev) => tapWorld(ev, camera, this.world, this.clock.elapsedTime);
+    this.onTap = (ev) => tapWorld(ev, camera, this.world, this.playTime);
     window.addEventListener('resize', this.onResize);
     this.ro = new ResizeObserver(() => this.onResize());
     this.ro.observe(stage);
@@ -467,7 +483,7 @@ class DemoSession {
 
   // show picture i (used for the first one and by the "another mosaic" button)
   show(i) {
-    const t = this.clock.elapsedTime;
+    const t = this.playTime;
     if (this.world) disposeWorld(this.world);
     this.index = i % this.targets.length;
     this.world = buildWorld(this.root, this.targets[this.index], { count: qs.has('birds') ? +qs.get('birds') : 6 });
@@ -481,11 +497,11 @@ class DemoSession {
 
   frame() {
     const dt = Math.min(this.clock.getDelta(), 0.05);
-    const t = this.clock.elapsedTime;
-    const idle = this.gyro || qs.has('still') ? 0 : 1;
+    this.playTime += dt;
+    const t = this.playTime;
     this.look.lerp(this.lookT, 1 - Math.exp(-dt * 4));
-    const yaw = this.look.x * 0.32 + idle * 0.1 * Math.sin(t * 0.23);
-    const pitch = -this.look.y * 0.2 + idle * 0.05 * Math.sin(t * 0.17);
+    const yaw = this.look.x * 0.32;
+    const pitch = -this.look.y * 0.2;
     const d = this.dist;
     this.camera.position.set(Math.sin(yaw) * d, Math.sin(pitch) * d, Math.cos(yaw) * Math.cos(pitch) * d);
     this.camera.lookAt(0, 0, 0);
