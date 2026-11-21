@@ -27,7 +27,7 @@ export async function loadManifest(base = 'assets/') {
   const m = await (await fetch(base + 'targets.json?v=exhibition2')).json();
   return Promise.all(m.targets.map(async (t, index) => {
     const dir = `${base}t/${t.id}/`;
-    const rig = await (await fetch(dir + 'rig.json?v=routes7')).json();
+    const rig = await (await fetch(dir + 'rig.json?v=volume9')).json();
     return { ...t, index, dir, rig };
   }));
 }

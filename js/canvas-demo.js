@@ -56,26 +56,37 @@ export class CanvasDemo {
       draw(effect.mesh, effect.texture.image, effect.size, effect.size);
     }
     ctx.globalAlpha = 1;
+    ctx.resetTransform();
+    const faces = [];
     for (const bird of ordered) {
       if (!bird.mesh.visible) continue;
-      const w = bird.rect[2]/rig.w, h = bird.rect[3]/rig.w;
-      if (bird.body && bird.airborne) {
-        ctx.globalAlpha = bird.body.material.opacity;
-        draw(bird.mesh, bird.body.material.map.image, w, h);
-        ctx.globalAlpha = 1;
-      }
-      ctx.globalAlpha = bird.mesh.material.opacity;
-      for (const wing of bird.wings) {
-        if (!wing.far || !wing.joint.visible) continue;
-        ctx.globalAlpha = wing.feather.material.opacity;
-        draw(wing.feather, wing.feather.material.map.image, w, h);
-      }
-      ctx.globalAlpha = bird.mesh.material.opacity;
-      draw(bird.mesh, bird.mesh.material.map.image, w, h);
-      for (const { joint, feather, far } of bird.wings) {
-        if (!far && joint.visible) draw(feather, feather.material.map.image, w, h);
-      }
-      ctx.globalAlpha = 1;
+      bird.mesh.traverse(part => {
+        if (!part.isMesh) return;
+        const { position, aColor } = part.geometry.attributes;
+        const indices = part.geometry.index;
+        const points = Array.from({length: position.count}, (_, i) => {
+          const v = this.point.fromBufferAttribute(position, i).applyMatrix4(part.matrixWorld).project(camera);
+          return [(v.x + 1) * el.width / 2, (1 - v.y) * el.height / 2, v.z];
+        });
+        const count = indices?.count ?? position.count;
+        for (let i = 0; i < count; i += 3) {
+          const id = indices ? indices.getX(i) : i;
+          const a = points[id], b = points[indices ? indices.getX(i+1) : i+1];
+          const c = points[indices ? indices.getX(i+2) : i+2];
+          const color = aColor
+            ? `rgb(${255*aColor.getX(id)},${255*aColor.getY(id)},${255*aColor.getZ(id)})`
+            : part.material.color.getStyle();
+          faces.push({a,b,c,color,depth:a[2]+b[2]+c[2]});
+        }
+      });
+    }
+    faces.sort((a,b) => b.depth-a.depth);
+    for (const {a,b,c,color} of faces) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.lineTo(c[0],c[1]);
+      ctx.closePath();
+      ctx.fill();
     }
   }
 

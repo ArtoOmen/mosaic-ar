@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { LivingMural } from './mural.js?v=flight6';
 import { TrackedPose } from './tracked-pose.js?v=flight6';
-import { CanvasDemo } from './canvas-demo.js?v=flight8';
-import { PerchedFlock } from './perched-flock.js?v=flight8';
+import { CanvasDemo } from './canvas-demo.js?v=volume9';
+import { PerchedFlock } from './perched-flock.js?v=volume9';
 import { Flock } from './flock.js';
 import { BirdSong } from './audio.js?v=flight8';
-import { loadManifest } from './rig.js?v=routes7';
+import { loadManifest } from './rig.js?v=volume9';
 
 const $ = (s) => document.querySelector(s);
 const qs = new URLSearchParams(location.search);
@@ -111,20 +111,6 @@ function loadAssets() {
       const [map, mask] = await Promise.all([L.loadAsync(t.dir + 'mural.jpg'), L.loadAsync(t.dir + 'mask.png')]);
       for (const x of [map, mask]) { x.colorSpace = THREE.NoColorSpace; x.anisotropy = 4; }
       Object.assign(t, { map, mask });
-      if (t.rig.birds) {
-        t.sprites = await Promise.all(t.rig.birds.map((_, i) => L.loadAsync(t.dir + 'bird-' + i + '.png')));
-        t.hiddenBodies = await Promise.all(t.rig.birds.map(bird => bird.hiddenBody ? L.loadAsync(t.dir + bird.hiddenBody) : null));
-        t.flightParts = await Promise.all(t.rig.birds.map(async (bird, i) => {
-          if (!bird.wings) return null;
-          const [body, ...wings] = await Promise.all([
-            L.loadAsync(t.dir + `body-${i}.png?v=wing5`),
-            ...bird.wings.map((_, j) => L.loadAsync(t.dir + `wing-${i}-${j}.png?v=wing5`))
-          ]);
-          for (const map of [body, ...wings]) map.colorSpace = THREE.SRGBColorSpace;
-          return { body, wings };
-        }));
-        for (const sprite of [...t.sprites, ...t.hiddenBodies].filter(Boolean)) sprite.colorSpace = THREE.SRGBColorSpace;
-      }
     }));
     return targets;
   })().catch((e) => { assetsP = null; throw e; });
@@ -153,6 +139,7 @@ function buildWorld(parent, target, { count, cameraOverlay = false }) {
 }
 
 function disposeWorld(world) {
+  world.flock.models?.tiles.dispose();
   for (const root of [world.mural.mesh, world.flock.group]) {
     root.parent && root.parent.remove(root);
     root.traverse((o) => {
