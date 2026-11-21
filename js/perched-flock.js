@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeMosaicBird } from './mosaic-bird.js?v=portrait12';
+import { makeMosaicBird } from './mosaic-bird.js?v=shoulder13';
 import { PerchEffect } from './perch-effect.js';
 import { px2local } from './rig.js';
 
@@ -13,8 +13,6 @@ export class PerchedFlock {
     this.up = new THREE.Vector3(0, 1, 0);
     this.origin = new THREE.Vector3();
     this.ahead = new THREE.Vector3();
-    this.headAim = new THREE.Quaternion();
-    this.viewer = new THREE.Vector3();
     this.birds = target.rig.birds.map(({ rect, direction, voice, flight }, i) => {
       const [x, y, w, h] = rect;
       const rig = target.rig;
@@ -46,7 +44,6 @@ export class PerchedFlock {
     bird.mesh.visible = false;
     bird.mesh.position.copy(bird.home);
     bird.mesh.rotation.set(0, 0, 0);
-    bird.model.head?.quaternion.identity();
     bird.start = null;
     bird.airborne = false;
   }
@@ -58,7 +55,7 @@ export class PerchedFlock {
     return Boolean(bird);
   }
 
-  update(t, frameDelta, cameraPosition) {
+  update(t) {
     for (const bird of this.birds) {
       bird.effect.update(t, this.visibility);
       if (bird.start === null || t < bird.start) continue;
@@ -96,7 +93,12 @@ export class PerchedFlock {
       // Keep the beak aligned in three dimensions. Banking follows path curvature.
       const dt = Math.max(0, t - bird.lastTime);
       bird.lastTime = t;
-      this.aim.lookAt(bird.tangent, this.origin, this.up);
+      this.ahead.copy(bird.tangent);
+      if (owl) {
+        const pitchLimit = Math.hypot(this.ahead.x,this.ahead.z)*.38;
+        this.ahead.y = THREE.MathUtils.clamp(this.ahead.y,-pitchLimit,pitchLimit);
+      }
+      this.aim.lookAt(this.ahead, this.origin, this.up);
       this.heading.setFromRotationMatrix(this.aim);
       if (bird.oriented) bird.mesh.quaternion.slerp(this.heading, -Math.expm1(-dt * 12));
       else bird.mesh.quaternion.copy(this.heading);
@@ -105,19 +107,19 @@ export class PerchedFlock {
       const bend = ahead.x * bird.tangent.z - ahead.z * bird.tangent.x;
       const brake = THREE.MathUtils.smootherstep(phase, .78, .94);
       const model = bird.model;
-      model.model.rotation.z = THREE.MathUtils.clamp(-bend * 1.65, -.66, .66) * arc;
+      const bankLimit = owl ? .30 : .66;
+      model.model.rotation.z = THREE.MathUtils.clamp(-bend * 1.65, -bankLimit, bankLimit) * arc;
       model.model.rotation.x = -.24 * brake;
-      if (model.head) {
-        this.viewer.copy(cameraPosition ?? this.up).sub(bird.pos);
-        if (!cameraPosition) this.viewer.set(0,0,1);
-        this.aim.lookAt(this.viewer, this.origin, this.up);
-        this.heading.setFromRotationMatrix(this.aim);
-        this.headAim.copy(bird.mesh.quaternion).multiply(model.model.quaternion).invert().multiply(this.heading);
-        model.head.quaternion.slerp(this.headAim, -Math.expm1(-dt*5));
-      }
       bird.mesh.scale.setScalar(bird.size * Math.sqrt(opacity));
       const open = THREE.MathUtils.smootherstep(phase, 0, .095)
         * (1 - THREE.MathUtils.smootherstep(phase, .89, 1));
+      const tucked = THREE.MathUtils.smootherstep(phase,.03,.18)
+        * (1-THREE.MathUtils.smootherstep(phase,.77,.96));
+      for (const leg of model.legs) {
+        leg.rotation.x = .64*tucked;
+        // Foreshorten the shank and toes as they draw up beneath the belly.
+        leg.scale.set(1-.16*tucked,1-.66*tucked,1-.53*tucked);
+      }
       const effort = (.94 - .89 * glide) * open;
       const stroke = Math.sin(wingCycle);
       const recovery = .5 - .5 * Math.cos(wingCycle);
@@ -129,8 +131,8 @@ export class PerchedFlock {
         wing.el.rotation.x = .12 + .21 * effort * Math.cos(wingCycle - .85);
         wing.sh.rotation.z = side * shoulder;
         wing.el.rotation.z = side * wrist;
-        wing.sh.rotation.y = side * ((1-open) * 1.15 + recovery * effort * .20);
-        wing.el.rotation.y = side * ((1-open) * .52 + recovery * effort * .42);
+        wing.sh.rotation.y = side * (.19 + (1-open) * .85 + recovery * effort * .34);
+        wing.el.rotation.y = side * (.10 + (1-open) * .48 + recovery * effort * .36);
         wing.sh.scale.x = (owl ? 1.13 : 1.04) * (.76 + .24 * open);
         wing.bend();
       }

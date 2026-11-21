@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { LivingMural } from './mural.js?v=flight6';
 import { TrackedPose } from './tracked-pose.js?v=flight6';
 import { CanvasDemo } from './canvas-demo.js?v=kiln11';
-import { PerchedFlock } from './perched-flock.js?v=portrait12';
+import { PerchedFlock } from './perched-flock.js?v=shoulder13';
 import { Flock } from './flock.js';
 import { BirdSong } from './audio.js?v=portrait12';
 import { loadManifest } from './rig.js?v=volume9';
@@ -114,8 +114,8 @@ function loadAssets() {
     await Promise.all(targets.map(async (t) => {
       const [map, mask, plumage, profiles] = await Promise.all([
         L.loadAsync(t.dir + 'mural.jpg'), L.loadAsync(t.dir + 'mask.png'),
-        t.rig.birds ? L.loadAsync(t.dir + 'portraits.webp') : null,
-        t.rig.birds ? fetch(t.dir + 'profiles.json').then(r=>r.json()) : null
+        t.rig.birds ? L.loadAsync(t.dir + 'portraits.webp?v=shoulder13') : null,
+        t.rig.birds ? fetch(t.dir + 'profiles.json?v=shoulder13').then(r=>r.json()) : null
       ]);
       for (const x of [map, mask]) { x.colorSpace = THREE.NoColorSpace; x.anisotropy = 4; }
       if (plumage) plumage.colorSpace = THREE.SRGBColorSpace;

@@ -14,8 +14,8 @@ export function makeMosaicBird(rig, atlas, profile, index) {
 
   function skin(part, place) {
     const positions = [], uv = [], colors = [], indices = [];
-    const [x0,y0,w,h] = part.rect;
     for (const side of [1,-1]) {
+      const [x0,y0,w,h] = side < 0 && part.backRect ? part.backRect : part.rect;
       const offset = positions.length/3;
       for (const [x,y,depth] of part.points) {
         const relief = Math.sqrt(Math.max(0,depth/4-1)*unit)*.32;
@@ -36,30 +36,56 @@ export function makeMosaicBird(rig, atlas, profile, index) {
   }
 
   // Pitch the original profile into its flying posture, preserving proportions.
+  const necks = [[.72,.33],[.64,.29],[.54,.39],[.68,.18],[.78,.29],
+    [.50,.28],[.74,.34],[.25,.25],[.65,.46]];
+  const [nx,ny] = necks[index];
   function bodyPoint(x,y,d) {
     const u=(x-width*.5)/unit, v=(height*.5-y)/unit;
-    if (owl) return [u,v,d/unit];
-    return [d/unit,v*.94-u*facing*.341,u*facing*.94+v*.341];
+    const below = THREE.MathUtils.smoothstep(y/height,ny-.06,ny+.21);
+    if (owl) {
+      const beak = d > 0 ? .05*Math.exp(-((u/.045)**2 + ((y/height-.33)/.046)**2)) : 0;
+      return [u,v,d/unit*(y/height < .43 ? 1.55 : 1.22) + beak
+        + Math.min(0,ny*height-y)*.70/unit];
+    }
+    // Lean the breast and tail into flight around the neck; keep the painted
+    // beak and eye line level instead of pitching the entire head nose-down.
+    const tilt = below * [.84,.72,0,.55,.62,.77,.43,.46,.64][index];
+    const sn=Math.sin(tilt), cs=Math.cos(tilt);
+    const du=(x-nx*width)*facing/unit, dv=(ny*height-y)/unit;
+    return [d/unit, v + dv*(cs-1)-du*sn, u*facing + du*(cs-1)+dv*sn];
   }
   model.add(skin(profile.body,bodyPoint));
-  let head;
   if (profile.head) {
-    head = new THREE.Group();
-    head.position.y = height*.10/unit;
+    const neck = new THREE.Group();
+    neck.position.fromArray(bodyPoint(.73*width,.30*height,0));
     const face = skin(profile.head,bodyPoint);
-    face.position.y = -head.position.y;
-    head.add(face);
-    model.add(head);
+    face.position.copy(neck.position).multiplyScalar(-1);
+    neck.add(face);
+    // The first bird looks over its back in the mosaic. Turn towards the
+    // flight path first, then lower the bill while the torso keeps its heading.
+    neck.rotation.set(1.22, Math.PI, 0, 'XYZ');
+    model.add(neck);
   }
+  const legs = profile.legs.map(({shape,hip}) => {
+    const joint = new THREE.Group();
+    joint.position.fromArray(bodyPoint(...hip,0));
+    const foot = skin(shape,bodyPoint);
+    foot.position.copy(joint.position).multiplyScalar(-1);
+    joint.add(foot); model.add(joint);
+    return joint;
+  });
 
   function wing(side, j) {
     const part = profile.wings[j];
-    const pivot = rig.hiddenBody ? [70,78] : rig.wings[j].pivot;
+    const pivot = profile.shoulders[j];
     const sh = new THREE.Group(), el = new THREE.Group();
+    // Sweep aft around the torso, then flap around the shoulder. Pitch feathers
+    // in their own frame so raising the wing cannot swing its tip over the beak.
+    sh.rotation.order = el.rotation.order = 'YZX';
     sh.position.fromArray(bodyPoint(...pivot,0));
     if (!owl) {
       sh.position.x = side*.08;
-      sh.position.z -= .065;
+      sh.position.z -= .035;
     }
     model.add(sh);
     sh.add(el);
@@ -76,7 +102,7 @@ export function makeMosaicBird(rig, atlas, profile, index) {
     const wingMesh = skin(part,(x,y,d)=>{
       const a=(x-pivot[0])/unit,b=(y-pivot[1])/unit;
       const span=a*dx+b*dy, chord=-a*dy+b*dx;
-      return [side*span,.15*d/unit+.05*span, -rig.wings[j].direction*chord*1.45-.12*span];
+      return [side*span,.15*d/unit+.05*span, -rig.wings[j].direction*chord*1.15-.31*span];
     });
     sh.add(wingMesh);
     wingMesh.frustumCulled=false;
@@ -96,5 +122,5 @@ export function makeMosaicBird(rig, atlas, profile, index) {
     }
     return {sh,el,bend};
   }
-  return {obj,model,head,wl:wing(-1,0),wr:wing(1,profile.wings.length-1)};
+  return {obj,model,legs,wl:wing(-1,0),wr:wing(1,profile.wings.length-1)};
 }
